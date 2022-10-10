@@ -42,7 +42,8 @@ from .__logs import init_logging
 from .__release    import version
 from .__curses_doc import print_doc
 
-from .__input import read_input
+from .__input import read_inputs
+from .__input import check_inputs
 
 ## Init logging
 logger = logging.getLogger(__name__)
@@ -61,13 +62,13 @@ def run_xsbck( **kwargs ):##{{{
 	Main execution, after the control of user input.
 	
 	"""
-	logger.info( "Start the run of XSBCK" )
+	logger.info( "XSBCK::start" )
 	
-	logger.info( "End of the run of XSBCK" )
+	logger.info( "xsbck::end" )
 	logger.info(LINE)
 ##}}}
 
-def start_xsbck( argv ):##{{{
+def start_xsbck():##{{{
 	"""
 	XSBCK.start_xsbck
 	=================
@@ -78,8 +79,11 @@ def start_xsbck( argv ):##{{{
 	## Time counter
 	walltime0 = dt.datetime.utcnow()
 	
+	## Read input
+	kwargs = read_inputs()
+	
 	## Init logs
-	init_logging(argv)
+	init_logging(kwargs["log"])
 	logger.info(LINE)
 	logger.info( "Start: {}".format(str(walltime0)[:19] + " (UTC)") )
 	logger.info(LINE)
@@ -91,16 +95,17 @@ def start_xsbck( argv ):##{{{
 		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 8 ) +  f"version {pkg.__version__}" )
 	logger.info(LINE)
 	
-	## Read input
-	kwargs,abort = read_input(argv)
-	
 	## List of all input
 	logger.info("Input parameters:")
 	keys = [key for key in kwargs]
 	keys.sort()
 	for key in keys:
-		logger.info( "   * {:{fill}{align}{n}}".format( key , fill = " ",align = "<" , n = 10 ) + ": {}".format(kwargs[key]) )
+		logger.info( " * {:{fill}{align}{n}}".format( key , fill = " ",align = "<" , n = 10 ) + ": {}".format(kwargs[key]) )
 	logger.info(LINE)
+	
+	## Check inputs
+	kwargs,abort = check_inputs(**kwargs)
+	
 	
 	## User asks help
 	if kwargs["help"]:
@@ -116,6 +121,8 @@ def start_xsbck( argv ):##{{{
 	
 	## End
 	walltime1 = dt.datetime.utcnow()
+	logger.info("\n")
+	logger.info(LINE)
 	logger.info( "End: {}".format(str(walltime1)[:19] + " (UTC)") )
 	logger.info( "Wall time: {}".format(walltime1 - walltime0) )
 	logger.info(LINE)

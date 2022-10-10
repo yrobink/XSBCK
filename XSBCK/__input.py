@@ -17,21 +17,94 @@
 ## along with XSBCK.  If not, see <https://www.gnu.org/licenses/>.
 
 
+## Package
+##########
+
+import os
+import logging
+import argparse
+
+## Init logging
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
+
+
 ## Functions
 ############
 
-def read_input( argv ):
+def read_inputs():##{{{
+	"""
+	XSBCK.read_inputs
+	=================
 	
-	## Global keyword args, from user input
-	kwargs = { "help" : False ,
-	}
-	abort = False
+	Function using argparse to read command line arguments. Return a dict
+	of all parameters (see the documentation)
+	"""
 	
-	##
-	for arg in argv:
+	parser = argparse.ArgumentParser( add_help = False )
+	
+	parser.add_argument( "-h" , "--help" , action = "store_const" , const = True , default = False )
+	parser.add_argument( "--log" , nargs = '*' , default = ["WARNING"] )
+	parser.add_argument( "--input-reference"  , "-iref"  , "-iY" , nargs = '+' )
+	parser.add_argument( "--input-biased"     , "-ibias" , "-iX" , nargs = '+' )
+	parser.add_argument( "--output-corrected" , "-ocorr" , "-oZ" , nargs = '+' )
+	parser.add_argument( "--method" , "-m" )
+	parser.add_argument( "--n-workers"           , default = 1 , type = int )
+	parser.add_argument( "--threads-per-workers" , default = 1 , type = int )
+	parser.add_argument( "--memory" , default = "2gb" )
+	
+	kwargs = vars(parser.parse_args())
+	
+	return kwargs
+##}}}
+
+def check_inputs(**kwargs):##{{{
+	"""
+	XSBCK.check_inputs
+	==================
+	
+	Check the input read by read_inputs.
+	
+	"""
+	
+	keys_files = ["input_biased","input_reference","output_corrected"]
+	available_methods = ["CDFt","R2D2"]
+	
+	## Now the big try
+	try:
+		## Test if file list is not empty
+		for key in keys_files:
+			if kwargs[key] is None:
+				raise Exception(f"File list '{key}' is empty, abort.")
 		
-		if arg in ["--help"]:
-			kwargs["help"] = True
+		## Test if file number is the same for reference, biased and unbiased,
+		n_file  = [len(kwargs[key]) for key in keys_files]
+		if not max(n_file) == min(n_file): ## all values are equal
+			raise Exception( f"File number not coincide:\n" + "\n".join( [f" * {key} : {n} file(s)" for key,n in zip(keys_files,n_file)] ) )
+		
+		## Now test if files really exist
+		for key in keys_files:
+			for f in kwargs[key]:
+				if not os.path.isfile(f):
+					raise Exception( f"File '{f}' from '{key}' doesn't exists, abort." )
+		
+		## Test if the method is given
+		m = kwargs["method"]
+		if m is None:
+			raise Exception( f"The method must be specified with the argument '--method'!" )
+		
+		## Test if the method is available
+		if not any([ am in m for am in available_methods ]):
+			raise Exception( f"The method {m} is not available, abort." )
+		
 	
+	## All exceptions
+	except Exception as e:
+		logger.error( f"Error: {e}" )
+		return kwargs,True
 	
-	return kwargs,abort
+	## And return
+	return kwargs,False
+##}}}
+
+

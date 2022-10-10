@@ -31,7 +31,7 @@ from .__exceptions import UserDefinedLoggingLevelError
 
 LINE = "=" * 80
 
-def init_logging(argv):
+def init_logging(logs_):
 	"""
 	XSBCK.init_logging
 	==================
@@ -40,22 +40,32 @@ def init_logging(argv):
 	
 	Parameters
 	----------
-	argv: tuple of the user input, from sys.argv
+	logs_: A list, can contain nothing, or just the loglevel
 	"""
 	
-	numlevel = logging.WARNING ## Default level: warning
+	## If at least on args, this is the loglevel / filename (if file)
+	logfile = None
+	if len(logs_) > 0:
+		loglevel = logs_[0]
+		if len(logs_) > 1:
+			logfile = logs_[1]
+	else:
+		loglevel = logging.DEBUG
 	
-	if "--log" in argv: ## User ask to see a specific level of log
-		
-		idx = argv.index("--log")+1
-		if idx < len(argv) and not argv[idx][0] == "-": ## str after '--log' in argv exists, and is the parameter of '--log'
-			loglevel = argv[idx]
-			numlevel = getattr(logging, loglevel.upper(), None)
-		else: ## Default value
-			numlevel = 10
-		if not isinstance(numlevel, int): ## If it is not an interger, raise an error
-			raise UserDefinedLoggingLevelError( f"Invalid log level: {loglevel}; nothing, 'debug', 'info', 'warning', 'error' or 'critical' expected" )
+	## loglevel can be an integet
+	try:
+		numlevel = int(loglevel)
+	except:
+		numlevel = getattr( logging , loglevel.upper() , None )
 	
+	## If it is not an integer, raise an error
+	if not isinstance( numlevel , int ): 
+		raise UserDefinedLoggingLevelError( f"Invalid log level: {loglevel}; nothing, an integer, 'debug', 'info', 'warning', 'error' or 'critical' expected" )
+	
+	##
+	log_kwargs = { "format" : '%(message)s' , "level" : numlevel }
+	if logfile is not None:
+		log_kwargs["filename"] = logfile
 #	logging.basicConfig( format = '%(levelname)s:%(name)s:%(funcName)s: %(message)s' , level = numlevel )
-	logging.basicConfig( format = '%(message)s' , level = numlevel )
+	logging.basicConfig(**log_kwargs)
 

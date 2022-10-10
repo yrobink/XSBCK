@@ -46,11 +46,11 @@ Input parameters
 --help
     Ask to see the documentation
 
---input-obs
+--input-reference, -iref, -iY
     A list of netcdf input files, as reference
---input-model
+--input-biased, -ibias, -iX
     A list of netcdf input files, as model to correct
---output
+--output-corrected, -ocorr, -oZ
     A list of netcdf output files
 --method
     Bias correction method
