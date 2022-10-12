@@ -16,11 +16,40 @@
 ## You should have received a copy of the GNU General Public License
 ## along with XSBCK.  If not, see <https://www.gnu.org/licenses/>.
 
-class UserDefinedLoggingLevelError(Exception):
-	def __init__( self , *args , **kwargs ):
-		super().__init__( *args , **kwargs )
+##############
+## Packages ##
+##############
 
-class AbortException(Exception):
-	def __init__( self , *args , **kwargs ):
-		super().__init__( *args , **kwargs )
+import os
+import random
+import string
+
+
+###############
+## Functions ##
+###############
+
+def build_tmp_dir( **kwargs ):##{{{
+	
+	if kwargs["tmp"] is not None:
+		return kwargs["tmp"]
+	
+	is_not_valid = True
+	while is_not_valid:
+		tmp = os.path.join( kwargs["tmp_base"] , "XSBCK_" + "".join( random.choices( string.ascii_uppercase + string.digits , k = 30 ) ) )
+		is_not_valid = os.path.isdir(tmp)
+	
+	os.makedirs(tmp)
+	return tmp
+##}}}
+
+def delete_tmp_dir( **kwargs ):##{{{
+	tmp = kwargs["tmp"]
+	for f in os.listdir(tmp):
+		os.remove( os.path.join( tmp , f ) )
+	
+	if isinstance( kwargs["tmp_base"] , bool ) and not kwargs["tmp_base"]:
+		os.rmdir(tmp)
+	
+##}}}
 
