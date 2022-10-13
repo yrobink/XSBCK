@@ -90,11 +90,11 @@ def run_xsbck( **kwargs ):##{{{
 	## Load data
 	dX,dY,coords = load_data(**kwargs)
 	
-	## Build the BC method
-	bc_glob_kwargs = build_BC_method(**kwargs)
+	## Build the BC method (non-stationary and stationary)
+	bc_n_kwargs,bc_s_kwargs = build_BC_method(**kwargs)
 	
 	## Correction
-	global_correction( dX , dY , coords , bc_glob_kwargs , **kwargs )
+	global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	
 	## Save
 	save_data( coords , **kwargs )
