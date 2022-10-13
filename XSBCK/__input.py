@@ -53,15 +53,15 @@ def read_inputs():##{{{
 	parser.add_argument( "--method" , "-m" )
 	parser.add_argument( "--n-workers"          , default = 1 , type = int )
 	parser.add_argument( "--threads-per-worker" , default = 1 , type = int )
-	parser.add_argument( "--memory" , default = "auto" )
-	parser.add_argument( "--tmp-base" , nargs = 1 , default = "/tmp/" )
-	parser.add_argument( "--tmp"      , nargs = 1 , default = None )
+	parser.add_argument( "--memory"      , default = "auto" )
+	parser.add_argument( "--tmp-base"    , default = "/tmp/" )
+	parser.add_argument( "--tmp"         , default = None )
+	parser.add_argument( "--window"      , default = "5,10,5" )
+	parser.add_argument( "--calibration" , default = "1976/2005" )
 	
 	kwargs = vars(parser.parse_args())
 	
 	##TODO
-	kwargs["calibration"] = ("1976","2005")
-	kwargs["window"]      = (5,10,5)
 	#kwargs["chunk"]       = "?"
 	
 	##
@@ -120,7 +120,23 @@ def check_inputs(**kwargs):##{{{
 		else:
 			if not os.path.isdir(kwargs["tmp_base"]):
 				raise Exception( f"The base temporary directory {kwargs['tmp_base']} doesn't exists!" )
-	
+		
+		## The window
+		kwargs["window"] = tuple([ int(s) for s in kwargs["window"].split(",") ])
+		if not len(kwargs["window"]) == 3:
+			raise Exception( f"Bad arguments for the window ({kwargs['window']})" )
+		
+		## The calibration period
+		kwargs["calibration"] = tuple(kwargs["calibration"].split("/"))
+		try:
+			_ = [int(s) for s in kwargs["calibration"]]
+		except:
+			raise Exception( f"Bad arguments for the calibration ({kwargs['calibration']})" )
+		
+		if not len(kwargs["calibration"]) == 2:
+			raise Exception( f"Bad arguments for the calibration ({kwargs['calibration']})" )
+		
+		
 	## All exceptions
 	except Exception as e:
 		logger.error( f"Error: {e}" )
