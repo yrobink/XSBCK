@@ -58,12 +58,14 @@ def read_inputs():##{{{
 	parser.add_argument( "--tmp"         , default = None )
 	parser.add_argument( "--window"      , default = "5,10,5" )
 	parser.add_argument( "--calibration" , default = "1976/2005" )
+	parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
 	
 	kwargs = vars(parser.parse_args())
 	
 	##TODO
 	#kwargs["chunk"]       = "?"
-	
+	#TODO add a parameter for year where correction start
+	##
 	##
 	
 	return kwargs
@@ -81,7 +83,7 @@ def check_inputs(**kwargs):##{{{
 	logger.info("check_inputs:start")
 	
 	keys_input = ["input_biased","input_reference"]
-	available_methods = ["CDFt","R2D2"]
+	available_methods = ["IdBC","CDFt","R2D2"]
 	abort = False
 	
 	## Now the big try
@@ -111,6 +113,25 @@ def check_inputs(**kwargs):##{{{
 		## Test if the method is available
 		if not any([ am in m for am in available_methods ]):
 			raise Exception( f"The method {m} is not available, abort." )
+		
+		## Check the method configuration
+		if m in available_methods:
+			if m == "R2D2":
+				kwargs["method"] = m + "-L-NV-2L"
+			else:
+				kwargs["method"] = m + "-L-1V-0L"
+		else:
+			try:
+				meth,cs,cv,cl = m.split("-")
+				if not cs == "L":
+					raise Exception
+				if not cv in ["1V","NV"]:
+					raise Exception
+				if not cl[-1] == "L":
+					raise Exception
+				l = int(cl[:-1]) ## Test if an Error is raised
+			except:
+				raise Exception( f"Method configuration ({m}) not well formed" )
 		
 		## Test if the tmp directory exists
 		if kwargs["tmp"] is not None:

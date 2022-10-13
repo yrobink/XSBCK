@@ -80,18 +80,18 @@ def run_xsbck( **kwargs ):##{{{
 	Main execution, after the control of user input.
 	
 	"""
-	#TODO add a parameter for year where correction start
 	
 	logger.info( "XSBCK::start" )
 	
 	## Init the distributed client
-	wclient = dask.distributed.Client( n_workers = kwargs["n_workers"] , threads_per_worker = kwargs["threads_per_worker"] , memory_limit = kwargs["memory"] )
+	if not kwargs["disable_dask"]:
+		wclient = dask.distributed.Client( n_workers = kwargs["n_workers"] , threads_per_worker = kwargs["threads_per_worker"] , memory_limit = kwargs["memory"] )
 	
 	## Load data
 	dX,dY,coords = load_data(**kwargs)
 	
 	## Build the BC method (non-stationary and stationary)
-	bc_n_kwargs,bc_s_kwargs = build_BC_method(**kwargs)
+	bc_n_kwargs,bc_s_kwargs = build_BC_method( coords , **kwargs )
 	
 	## Correction
 	global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
