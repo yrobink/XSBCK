@@ -87,23 +87,33 @@ def build_BC_method( **kwargs ):##{{{
 	bc_method        = bcp.BCISkipNotValid
 #	bc_method_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "lag_search" : 6 , "lag_keep" : 3 } }
 #	bc_method_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
-	bc_method_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	
+	## The method
+	bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	
+	## The pipe
 	pipe             = []
 	pipe_kwargs      = []
 	
-	bc_glob_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
+	## Global arguments
+	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
+	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
 	
-	return bc_glob_kwargs
+	return bc_n_kwargs,bc_s_kwargs
 ##}}}
 
-def global_correction( dX , dY , coords , bc_glob_kwargs , **kwargs ):##{{{
+def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs ):##{{{
+	
+	logger.info( "global_correction:start" )
 	
 	## Parameters
 	months = [m+1 for m in range(12)]
 	
 	## Extract calibration period
-	dY0 = dY.sel( time = slice(*kwargs["calibration"]) )
-	dX0 = dX.sel( time = slice(*kwargs["calibration"]) )
+	calib = kwargs["calibration"]
+	dY0 = dY.sel( time = slice(*calib) )
+	dX0 = dX.sel( time = slice(*calib) )
 	
 	## Prepare data in calibration period
 	X0 = sdbp.stack_variables(dX0)
@@ -118,7 +128,6 @@ def global_correction( dX , dY , coords , bc_glob_kwargs , **kwargs ):##{{{
 	tend = str(coords.time[-1].values)[:4]
 	
 	## Loop over time
-	k = 0
 	logger.info( f"Iterate over time {wleft}-{wpred}-{wright}" )
 	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright ):
@@ -132,17 +141,25 @@ def global_correction( dX , dY , coords , bc_glob_kwargs , **kwargs ):##{{{
 			X1 = X1.sel( multivar = coords.lcvarsX )
 		
 		## Correction
-		Z1  = xr.concat( [ sdba.adjustment.SBCK_XClimPPP.adjust( Y0.groupby("time.month")[m] , X0.groupby("time.month")[m] , X1.groupby("time.month")[m] , multi_dim = "multivar" , **bc_glob_kwargs ) for m in months ] , dim = "time" )
+		Z1  = xr.concat( [ sdba.adjustment.SBCK_XClimNPPP.adjust( Y0.groupby("time.month")[m] , X0.groupby("time.month")[m] , X1.groupby("time.month")[m] , multi_dim = "multivar" , **bc_n_kwargs ) for m in months ] , dim = "time" )
 		Z1  = Z1.compute().sortby("time").sel( time = slice(tp0,tp1) )
 		
 		## Split variables and save in a temporary folder
 		dZ1 = sdbp.unstack_variables(Z1)
 		for cvar in coords.lcvarsX:
 			dZ1[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_{tp0}-{tp1}.nc" ) )
-		
-		k += 1
-		if k > 2:
-			break
+	
+	## And the calibration period
+	logger.info( f"Correction in calibration period" )
+	Z0  = xr.concat( [ sdba.adjustment.SBCK_XClimSPPP.adjust( Y0.groupby("time.month")[m] , X0.groupby("time.month")[m] , X0.groupby("time.month")[m] , multi_dim = "multivar" , **bc_s_kwargs ) for m in months ] , dim = "time" )
+	Z0  = Z0.compute().sortby("time")
+	
+	## Split variables and save in a temporary folder
+	dZ0 = sdbp.unstack_variables(Z0)
+	for cvar in coords.lcvarsX:
+		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{tp0}-{tp1}.nc" ) )
+	
+	logger.info( "global_correction:end" )
 ##}}}
 
 
