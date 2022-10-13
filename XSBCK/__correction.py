@@ -91,6 +91,8 @@ def build_BC_method( **kwargs ):##{{{
 	## The method
 	bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
 	bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
+	bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
 	
 	## The pipe
 	pipe             = []

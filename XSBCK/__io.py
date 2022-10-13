@@ -24,9 +24,11 @@
 import sys
 import os
 import logging
+import datetime as dt
 
 import numpy  as np
 import xarray as xr
+import cftime
 
 
 ##################
@@ -74,6 +76,7 @@ class Coordinates:##{{{
 			self.lcvarsX.sort()
 		else:
 			self.lcvarsX = lcvarsX
+		self.dimsX = dX[self.lcvarsX[0]].dims
 		
 		if lcvarsY is None:
 			self.lcvarsY  = [key for key in dY.data_vars if len(dY[key].dims) == 3]
@@ -105,7 +108,7 @@ class Coordinates:##{{{
 	
 	def summary(self):
 		lstr = []
-		lstr.append( "Coordinates:" )
+		lstr.append( f"Coordinates: {self.dimsX}" )
 		lstr = lstr + [ f" * {c}" for c in self.coords ]
 		if self.mapping is not None:
 			lstr.append( f"Mapping: {self.mapping}" )
@@ -140,7 +143,99 @@ def load_data( **kwargs ):##{{{
 	return dX,dY,coords
 ##}}}
 
+def build_reference( method ):##{{{
+	
+	ref = ""
+	if "CDFt" in method:
+		ref = "Michelangeli, P.-A., Vrac, M., and Loukos, H.: Probabilistic downscaling approaches: Application to wind cumulative distribution functions, Geophys. Res. Lett., 36, L11708, doi:10.1029/2009GL038401, 2009."
+	
+	if "R2D2" in method:
+		ref = "Vrac, M. et S. Thao (2020). “R2 D2 v2.0 : accounting for temporal dependences in multivariate bias correction via analogue rank resampling”. In : Geosci. Model Dev. 13.11, p. 5367-5387. doi :10.5194/gmd-13-5367-2020."
+	
+	return ref
+##}}}
+
 def save_data( coords , **kwargs ):##{{{
-	pass
+	
+	logger.info( "save_data:start" )
+	
+	## Read tmp files
+	dZ = {}
+	for cvar in coords.lcvarsX:
+		
+		Z1 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
+		Z0 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
+		Z1.loc[Z0.time,:,:] = Z0
+		dZ[cvar] = Z1
+	
+	dZ = xr.Dataset(dZ)
+	
+	## Now loop on input files to define output files
+	for f in kwargs["input_biased"]:
+		
+		## Load data
+		dX = xr.open_dataset(f)
+		
+		## Find calendar
+		calendar = "gregorian"
+		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
+			calendar = "365_day"
+		if isinstance(dX.time.values[0],cftime.Datetime360Day):
+			calendar = "360_day"
+		
+		## Find the variable
+		for cvar in coords.lcvarsX:
+			if cvar in dX: break
+		X = dX[cvar]
+		
+		## Build the output file
+		avar = cvar + "Adjust"
+		Z  = dZ[cvar].loc[X.time,:,:]
+		oZ = { avar : Z }
+		if coords.mapping is not None:
+			oZ[coords.mapping] = 1
+		odata = xr.Dataset(oZ)
+		
+		## Add global attributes
+		odata.attrs = dX.attrs
+		
+		## Add variables attributes
+		odata[avar].attrs = X.attrs
+		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
+		
+		## Add mapping? attributes
+		if coords.mapping is not None:
+			odata[coords.mapping].attrs = dX[coords.mapping].attrs
+		
+		## Add coords attributes
+		for c in coords.coords:
+			odata[c].attrs = dX[c].attrs
+		
+		## Add BC attributes
+		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
+		odata.attrs["bc_method"] = kwargs["method"]
+		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
+		odata.attrs["bc_window"] = ",".join( [str(x) for x in kwargs["window"]] )
+		odata.attrs["bc_reference"] = build_reference(kwargs["method"])
+		
+		## The encoding
+		encoding = {"time" : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : "days since " + str(dZ.time.values[0])[:10] } }
+		for c in coords.coords:
+			encoding[c] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape }
+		encoding[avar]  = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+		if coords.mapping is not None:
+			encoding[coords.mapping] = { "dtype" : "int32" }
+		
+		## ofile
+		ifile = os.path.basename(f)
+		if cvar in ifile:
+			ofile = ifile.replace(cvar,avar)
+		else:
+			ofile = f"{avar}_{ifile}"
+		
+		## And save
+		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
+	
+	logger.info( "save_data:end" )
 ##}}}
 
