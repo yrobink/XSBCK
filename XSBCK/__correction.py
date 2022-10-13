@@ -42,6 +42,27 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
+#############
+## Classes ##
+#############
+
+class SAR2D2(bc.AR2D2):##{{{
+	
+	def __init__( self , col_cond = [0] , lag_search = 1 , lag_keep = 1 , bc_method = bc.QM , shuffle = "quantile" , reverse = False , **bckwargs ):##{{{
+		bc.AR2D2.__init__( self , col_cond , lag_search , lag_keep , bc_method , shuffle , reverse , **bckwargs )
+	##}}}
+	
+	def fit( self , Y0 , X0 ):##{{{
+		bc.AR2D2.fit( self , Y0 , X0 )
+	##}}}
+	
+	def predict( self , X0 ):##{{{
+		return bc.AR2D2.predict( self , X0 = X0 )
+	##}}}
+	
+##}}}
+
+
 ###############
 ## Functions ##
 ###############
@@ -83,16 +104,22 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 		tf1 = tp1 + wright
 ##}}}
 
-def build_BC_method( **kwargs ):##{{{
+def build_BC_method( coords , **kwargs ):##{{{
 	bc_method        = bcp.BCISkipNotValid
-#	bc_method_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "lag_search" : 6 , "lag_keep" : 3 } }
-#	bc_method_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
 	
 	## The method
-	bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-	bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-	bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
-	bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
+	if "IdBC" in kwargs["method"]:
+		bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+		bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	if "CDFt" in kwargs["method"]:
+		bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
+		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
+	if "R2D2" in kwargs["method"]:
+		col_cond   = [0]
+		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
+		lag_search = 2 * lag_keep
+		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.CDFt } }
+		bc_method_s_kwargs = { "bc_method" :   SAR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
 	
 	## The pipe
 	pipe             = []
@@ -159,7 +186,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	## Split variables and save in a temporary folder
 	dZ0 = sdbp.unstack_variables(Z0)
 	for cvar in coords.lcvarsX:
-		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{tp0}-{tp1}.nc" ) )
+		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{calib[0]}-{calib[1]}.nc" ) )
 	
 	logger.info( "global_correction:end" )
 ##}}}
