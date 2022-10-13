@@ -227,11 +227,12 @@ def save_data( coords , **kwargs ):##{{{
 			encoding[coords.mapping] = { "dtype" : "int32" }
 		
 		## ofile
-		ifile = os.path.basename(f)
+		ifile  = os.path.basename(f)
+		prefix = f"{avar}_{kwargs['method']}"
 		if cvar in ifile:
-			ofile = ifile.replace(cvar,avar)
+			ofile = ifile.replace(cvar,prefix)
 		else:
-			ofile = f"{avar}_{ifile}"
+			ofile = f"{prefix}_{ifile}"
 		
 		## And save
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
