@@ -148,8 +148,8 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	X0 = sdbp.stack_variables(dX0)
 	Y0 = sdbp.stack_variables(dY0)
 	if coords.ncvar > 1:
-		X0 = X0.sel( multivar = coords.lcvarsX )
-		Y0 = Y0.sel( multivar = coords.lcvarsY )
+		X0 = X0.sel( multivar = coords.cvarsX )
+		Y0 = Y0.sel( multivar = coords.cvarsY )
 	
 	## Init time
 	wleft,wpred,wright = kwargs["window"]
@@ -167,7 +167,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 		dX1 = dX.sel( time = slice(tf0,tf1) )
 		X1  = sdbp.stack_variables(dX1)
 		if coords.ncvar > 1:
-			X1 = X1.sel( multivar = coords.lcvarsX )
+			X1 = X1.sel( multivar = coords.cvarsX )
 		
 		## Correction
 		Z1  = xr.concat( [ sdba.adjustment.SBCK_XClimNPPP.adjust( Y0.groupby("time.month")[m] , X0.groupby("time.month")[m] , X1.groupby("time.month")[m] , multi_dim = "multivar" , **bc_n_kwargs ) for m in months ] , dim = "time" )
@@ -175,7 +175,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 		
 		## Split variables and save in a temporary folder
 		dZ1 = sdbp.unstack_variables(Z1)
-		for cvar in coords.lcvarsX:
+		for cvar in coords.cvarsX:
 			dZ1[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_{tp0}-{tp1}.nc" ) )
 	
 	## And the calibration period
@@ -185,7 +185,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	
 	## Split variables and save in a temporary folder
 	dZ0 = sdbp.unstack_variables(Z0)
-	for cvar in coords.lcvarsX:
+	for cvar in coords.cvarsX:
 		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{calib[0]}-{calib[1]}.nc" ) )
 	
 	logger.info( "global_correction:end" )

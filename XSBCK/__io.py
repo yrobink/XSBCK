@@ -45,7 +45,7 @@ logger.addHandler(logging.NullHandler())
 
 class Coordinates:##{{{
 	
-	def __init__( self , dX , dY , lcvarsX = None , lcvarsY = None ):
+	def __init__( self , dX , dY , cvarsX = None , cvarsY = None ):
 		
 		## Check the two dataset have the same coordinates
 		coordsX = [key for key in dX.coords]
@@ -68,31 +68,31 @@ class Coordinates:##{{{
 			raise Exception( "Latitude or longitude are not given" )
 		
 		## Now the variables
-		if (lcvarsX is not None and lcvarsY is None) or (lcvarsY is not None and lcvarsX is None):
+		if (cvarsX is not None and cvarsY is None) or (cvarsY is not None and cvarsX is None):
 			raise Exception( "If cvars is given for the ref (or the biased), cvars must be given for the biased (or the ref)" )
 		
-		if lcvarsX is None:
-			self.lcvarsX  = [key for key in dX.data_vars if len(dX[key].dims) == 3]
-			self.lcvarsX.sort()
+		if cvarsX is None:
+			self.cvarsX  = [key for key in dX.data_vars if len(dX[key].dims) == 3]
+			self.cvarsX.sort()
 		else:
-			self.lcvarsX = lcvarsX
-		self.dimsX = dX[self.lcvarsX[0]].dims
+			self.cvarsX = cvarsX
+		self.dimsX = dX[self.cvarsX[0]].dims
 		
-		if lcvarsY is None:
-			self.lcvarsY  = [key for key in dY.data_vars if len(dY[key].dims) == 3]
-			self.lcvarsY.sort()
+		if cvarsY is None:
+			self.cvarsY  = [key for key in dY.data_vars if len(dY[key].dims) == 3]
+			self.cvarsY.sort()
 		else:
-			self.lcvarsY = lcvarsY
+			self.cvarsY = cvarsY
 		
-		if not len(self.lcvarsY) == len(self.lcvarsX):
+		if not len(self.cvarsY) == len(self.cvarsX):
 			raise Exception( "Different numbers of variables!" )
 		
-		self.ncvar = len(self.lcvarsX)
+		self.ncvar = len(self.cvarsX)
 		
 		## Now check if a grid mapping exists
 		self.mapping = None
-		if "grid_mapping" in dX[self.lcvarsX[0]].attrs:
-			self.mapping = dX[self.lcvarsX[0]].attrs["grid_mapping"]
+		if "grid_mapping" in dX[self.cvarsX[0]].attrs:
+			self.mapping = dX[self.cvarsX[0]].attrs["grid_mapping"]
 		
 	
 	def delete_mapping( self , *args ):
@@ -113,15 +113,15 @@ class Coordinates:##{{{
 		if self.mapping is not None:
 			lstr.append( f"Mapping: {self.mapping}" )
 		lstr.append( "Reference variables:" )
-		lstr = lstr + [ f" * {cvarY}" for cvarY in self.lcvarsY ]
+		lstr = lstr + [ f" * {cvarY}" for cvarY in self.cvarsY ]
 		lstr.append( "Biased variables:" )
-		lstr = lstr + [ f" * {cvarX}" for cvarX in self.lcvarsX ]
+		lstr = lstr + [ f" * {cvarX}" for cvarX in self.cvarsX ]
 		
 		return "\n".join(lstr)
 	
 	@property
 	def cvars(self):
-		return [ (cvarX,cvarY) for cvarX,cvarY in zip(self.lcvarsX,self.lcvarsY) ]
+		return [ (cvarX,cvarY) for cvarX,cvarY in zip(self.cvarsX,self.cvarsY) ]
 
 ##}}}
 
@@ -132,7 +132,7 @@ def load_data( **kwargs ):##{{{
 	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" )
 	
 	## Identify coordinates
-	coords = Coordinates( dX , dY )
+	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] )
 	dX,dY  = coords.delete_mapping(dX,dY)
 	logger.info(coords.summary())
 	
@@ -161,7 +161,7 @@ def save_data( coords , **kwargs ):##{{{
 	
 	## Read tmp files
 	dZ = {}
-	for cvar in coords.lcvarsX:
+	for cvar in coords.cvarsX:
 		
 		Z1 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
 		Z0 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
@@ -184,7 +184,7 @@ def save_data( coords , **kwargs ):##{{{
 			calendar = "360_day"
 		
 		## Find the variable
-		for cvar in coords.lcvarsX:
+		for cvar in coords.cvarsX:
 			if cvar in dX: break
 		X = dX[cvar]
 		
