@@ -68,4 +68,4 @@ def init_logging(logs_):
 		log_kwargs["filename"] = logfile
 #	logging.basicConfig( format = '%(levelname)s:%(name)s:%(funcName)s: %(message)s' , level = numlevel )
 	logging.basicConfig(**log_kwargs)
-
+	logging.captureWarnings(True)
