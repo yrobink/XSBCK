@@ -45,7 +45,6 @@ Input parameters
     arguments, 'debug' is used.
 --help
     Ask to see the documentation
-
 --input-reference, -iref, -iY
     A list of netcdf input files, as reference
 --input-biased, -ibias, -iX
@@ -56,10 +55,25 @@ Input parameters
     Bias correction method
 --n-workers [int]
     CPU numbers
---threads-per-workers [int]
+--threads-per-worker [int]
     Threads numbers per CPU
 --memory
     Memory per worker
+--tmp-base [str, default= '/tmp/']
+    Base path to build a random temporary folder. Not used if '--tmp' is set.
+--tmp [str, default is None]
+    Temporary folder used. Optional
+--window [w_left,w_predict,w_right, default=5,10,5]
+    The moving window for the correction: w_left + w_predict + w_right is the
+    fit window, whereas w_predict is the correction part.
+--calibration [default= "1976/2005]
+    Calibration period, in the form 'year_start/year_end'.
+--disable-dask
+    Use this option to disable the dask client.
+--cvarsX
+    Model climate variables, in the form var0,var1,var2,...
+--cvarsY" , default = None )
+    Reference climate variables, in the form var0,var1,var2,...
 
 Examples
 --------
