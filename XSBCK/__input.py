@@ -61,6 +61,7 @@ def read_inputs():##{{{
 	parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
 	parser.add_argument( "--cvarsX" , default = None )
 	parser.add_argument( "--cvarsY" , default = None )
+	parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
 	
 	kwargs = vars(parser.parse_args())
 	
