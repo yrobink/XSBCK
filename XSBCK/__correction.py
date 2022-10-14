@@ -33,6 +33,8 @@ import xclim.sdba.processing as sdbp
 import SBCK as bc
 import SBCK.ppp as bcp
 
+import inspect
+
 
 ##################
 ## Init logging ##
@@ -66,6 +68,74 @@ class SAR2D2(bc.AR2D2):##{{{
 ###############
 ## Functions ##
 ###############
+
+def build_pipe( coords , **kwargs ):##{{{
+	
+	lppps = kwargs["ppp"]
+	
+	## Init
+	pipe             = []
+	pipe_kwargs      = []
+	
+	## Identify columns
+	dcols = { cvar : [coords.cvarsX.index(cvar)] for cvar in coords.cvarsX }
+	
+	## Explore SBCK.ppp
+	ppp_avail = [clsname for clsname in dir(bcp) if not clsname.startswith("_")]
+	cls = getattr(bcp,ppp_avail[0])
+#	print(ppp_avail)
+#	print(cls)
+#	print(inspect.signature(cls))
+#	
+#	raise Exception
+	
+	## Loop on ppp
+	for ppp_str in lppps:
+		
+		sppp = ppp_str.split(",")
+		cvar = sppp[0]
+		ppp  = sppp[1:]
+		
+		for p in ppp:
+			
+			p_name,p_param = p.split("[")
+			
+			if p == "LogLin":
+				pipe.append( bcp.PPPLogLinLink )
+				pipe_kwargs.append( { "cols" : dcols[cvar] } )
+			if p == "SSR":
+				pipe.append( bcp.PPPSSR )
+				pipe_kwargs.append( { "cols" : dcols[cvar] } )
+	
+	return pipe,pipe_kwargs
+##}}}
+
+def build_BC_method( coords , **kwargs ):##{{{
+	bc_method        = bcp.BCISkipNotValid
+	
+	## The method
+	if "IdBC" in kwargs["method"]:
+		bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+		bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+	if "CDFt" in kwargs["method"]:
+		bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
+		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
+	if "R2D2" in kwargs["method"]:
+		col_cond   = [0]
+		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
+		lag_search = 2 * lag_keep
+		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.CDFt } }
+		bc_method_s_kwargs = { "bc_method" :   SAR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
+	
+	## The pipe
+	pipe,pipe_kwargs = build_pipe( coords , **kwargs )
+	
+	## Global arguments
+	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
+	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
+	
+	return bc_n_kwargs,bc_s_kwargs
+##}}}
 
 def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 	
@@ -102,34 +172,6 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 		tp1 = tp0 + wpred - 1
 		tf0 = tp0 - wleft
 		tf1 = tp1 + wright
-##}}}
-
-def build_BC_method( coords , **kwargs ):##{{{
-	bc_method        = bcp.BCISkipNotValid
-	
-	## The method
-	if "IdBC" in kwargs["method"]:
-		bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-		bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-	if "CDFt" in kwargs["method"]:
-		bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
-		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
-	if "R2D2" in kwargs["method"]:
-		col_cond   = [0]
-		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
-		lag_search = 2 * lag_keep
-		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.CDFt } }
-		bc_method_s_kwargs = { "bc_method" :   SAR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
-	
-	## The pipe
-	pipe             = []
-	pipe_kwargs      = []
-	
-	## Global arguments
-	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
-	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
-	
-	return bc_n_kwargs,bc_s_kwargs
 ##}}}
 
 def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs ):##{{{
