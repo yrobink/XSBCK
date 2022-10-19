@@ -74,44 +74,111 @@ def build_pipe( coords , **kwargs ):##{{{
 	lppps = kwargs["ppp"]
 	
 	## Init
-	pipe             = []
-	pipe_kwargs      = []
+	cvar_pipe        = []
+	cvar_pipe_kwargs = []
+	all_pipe         = []
+	all_pipe_kwargs  = []
 	
 	## Identify columns
 	dcols = { cvar : [coords.cvarsX.index(cvar)] for cvar in coords.cvarsX }
 	
 	## Explore SBCK.ppp
-	ppp_avail = [clsname for clsname in dir(bcp) if not clsname.startswith("_")]
-	cls = getattr(bcp,ppp_avail[0])
-#	print(ppp_avail)
-#	print(cls)
-#	print(inspect.signature(cls))
-#	
-#	raise Exception
+	ppp_avail = [clsname for clsname in dir(bcp) if clsname.startswith("PPP") ]
 	
 	## Loop on ppp
-	for ppp_str in lppps:
+	for i in range(len(lppps)):
 		
-		sppp = ppp_str.split(",")
-		cvar = sppp[0]
-		ppp  = sppp[1:]
+		## Find cvar and list of ppp
+		cvar,_,ppps_str = lppps[i].partition(",")
 		
-		for p in ppp:
+		## Split with ',', and remerge (e.g. 'A[B=2,C=3],K' => ['A[B=2,C=3]','K'] and not ['A[B=2','C=3]','K']
+		split = ppps_str.split(",")
+		lppp  = []
+		while len(split) > 0:
 			
-			p_name,p_param = p.split("[")
+			if "[" in split[0]:
+				if "]" in split[0]:
+					lppp.append(split[0])
+					del split[0]
+				else:
+					for j in range(len(split)):
+						if "]" in split[j]:
+							break
+					lppp.append( ",".join(split[:(j+1)]) )
+					split = split[(j+1):]
+			else:
+				lppp.append(split[0])
+				del split[0]
+		
+		## Loop on ppp
+		for ppp in lppp:
 			
-			if p == "LogLin":
-				pipe.append( bcp.PPPLogLinLink )
-				pipe_kwargs.append( { "cols" : dcols[cvar] } )
-			if p == "SSR":
-				pipe.append( bcp.PPPSSR )
-				pipe_kwargs.append( { "cols" : dcols[cvar] } )
+			## Extract name / parameters
+			if "[" in ppp:
+				p_name,p_param = ppp.split("[")
+				p_param = p_param.split("]")[0].split(",")
+			else:
+				p_name  = ppp
+				p_param = []
+			
+			## Find the true name
+			if p_name in ppp_avail:
+				pass
+			elif f"PPP{p_name}" in ppp_avail:
+				p_name = f"PPP{p_name}"
+			elif f"{p_name}Link" in ppp_avail:
+				p_name = f"{p_name}Link"
+			elif f"PPP{p_name}Link" in ppp_avail:
+				p_name = f"PPP{p_name}Link"
+			else:
+				raise Exception(f"Unknow ppp {p_name}")
+			
+			## Define the class, and read the signature
+			cls     = getattr(bcp,p_name)
+			insp    = inspect.getfullargspec(cls)
+			pkwargs = insp.kwonlydefaults
+			
+			## Special case, the cols parameter
+			if "cols" in pkwargs:
+				pkwargs["cols"] = dcols[cvar]
+			
+			## And others parameters
+			for p in p_param:
+				key,val = p.split("=")
+				if key in insp.annotations:
+					pkwargs[key] = insp.annotations[key](val)
+				else:
+					pkwargs[key] = val
+					
+					## Special case, val is a list (as sum) of cvar
+					if len(set(val.split("+")) & set(coords.cvarsX)) > 0:
+						pkwargs[key] = []
+						for v in val.split("+"):
+							if not v in dcols:
+								raise Exception(f"Unknow '{v}' as parameter for the ppp {p_name}")
+							pkwargs[key] = pkwargs[key] + dcols[v]
+			
+			## Append
+			if cvar == "_all_":
+				all_pipe.append(cls)
+				all_pipe_kwargs.append(pkwargs)
+			else:
+				cvar_pipe.append(cls)
+				cvar_pipe_kwargs.append(pkwargs)
+	
+	## Global pipe at the end (and use first)
+	pipe = cvar_pipe + all_pipe
+	pipe_kwargs = cvar_pipe_kwargs + all_pipe_kwargs
+	
+#	logging.info(pipe)
+#	logging.info(pipe_kwargs)
+#	raise Exception
 	
 	return pipe,pipe_kwargs
 ##}}}
 
 def build_BC_method( coords , **kwargs ):##{{{
-	bc_method        = bcp.BCISkipNotValid
+	bc_method        = bcp.PrePostProcessing
 	
 	## The method
 	if "IdBC" in kwargs["method"]:
