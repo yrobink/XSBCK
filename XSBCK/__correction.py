@@ -69,18 +69,22 @@ class SAR2D2(bc.AR2D2):##{{{
 ## Functions ##
 ###############
 
+## TODO : parameter of the BC method, i.e. col_cond for R2D2
+
 def build_pipe( coords , **kwargs ):##{{{
 	
-	lppps = kwargs["ppp"]
+	lppps = kwargs.get("ppp")
+	
+	if lppps is None:
+		return [],[]
+	
 	
 	## Init
-	cvar_pipe        = []
-	cvar_pipe_kwargs = []
-	all_pipe         = []
-	all_pipe_kwargs  = []
+	pipe        = []
+	pipe_kwargs = []
 	
 	## Identify columns
-	dcols = { cvar : [coords.cvarsX.index(cvar)] for cvar in coords.cvarsX }
+	dcols = { cvar : [coords.cvarsZ.index(cvar)] for cvar in coords.cvarsZ }
 	
 	## Explore SBCK.ppp
 	ppp_avail = [clsname for clsname in dir(bcp) if clsname.startswith("PPP") ]
@@ -139,7 +143,7 @@ def build_pipe( coords , **kwargs ):##{{{
 			pkwargs = insp.kwonlydefaults
 			
 			## Special case, the cols parameter
-			if "cols" in pkwargs:
+			if "cols" in pkwargs and cvar in coords.cvarsZ:
 				pkwargs["cols"] = dcols[cvar]
 			
 			## And others parameters
@@ -151,7 +155,7 @@ def build_pipe( coords , **kwargs ):##{{{
 					pkwargs[key] = val
 					
 					## Special case, val is a list (as sum) of cvar
-					if len(set(val.split("+")) & set(coords.cvarsX)) > 0:
+					if len(set(val.split("+")) & set(coords.cvarsZ)) > 0:
 						pkwargs[key] = []
 						for v in val.split("+"):
 							if not v in dcols:
@@ -159,25 +163,15 @@ def build_pipe( coords , **kwargs ):##{{{
 							pkwargs[key] = pkwargs[key] + dcols[v]
 			
 			## Append
-			if cvar == "_all_":
-				all_pipe.append(cls)
-				all_pipe_kwargs.append(pkwargs)
-			else:
-				cvar_pipe.append(cls)
-				cvar_pipe_kwargs.append(pkwargs)
-	
-	## Global pipe at the end (and use first)
-	pipe = cvar_pipe + all_pipe
-	pipe_kwargs = cvar_pipe_kwargs + all_pipe_kwargs
-	
-#	logging.info(pipe)
-#	logging.info(pipe_kwargs)
-#	raise Exception
+			pipe.append(cls)
+			pipe_kwargs.append(pkwargs)
 	
 	return pipe,pipe_kwargs
 ##}}}
 
 def build_BC_method( coords , **kwargs ):##{{{
+	
+	
 	bc_method        = bcp.PrePostProcessing
 	
 	## The method
@@ -257,8 +251,8 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	X0 = sdbp.stack_variables(dX0)
 	Y0 = sdbp.stack_variables(dY0)
 	if coords.ncvar > 1:
-		X0 = X0.sel( multivar = coords.cvarsX )
-		Y0 = Y0.sel( multivar = coords.cvarsY )
+		X0 = X0.sel( multivar = coords.cvarsZ )
+		Y0 = Y0.sel( multivar = coords.cvarsZ )
 	
 	## Init time
 	wleft,wpred,wright = kwargs["window"]
@@ -276,7 +270,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 		dX1 = dX.sel( time = slice(tf0,tf1) )
 		X1  = sdbp.stack_variables(dX1)
 		if coords.ncvar > 1:
-			X1 = X1.sel( multivar = coords.cvarsX )
+			X1 = X1.sel( multivar = coords.cvarsZ )
 		
 		## Correction
 		Z1  = xr.concat( [ sdba.adjustment.SBCK_XClimNPPP.adjust( Y0.groupby("time.month")[m] , X0.groupby("time.month")[m] , X1.groupby("time.month")[m] , multi_dim = "multivar" , **bc_n_kwargs ) for m in months ] , dim = "time" )
@@ -284,7 +278,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 		
 		## Split variables and save in a temporary folder
 		dZ1 = sdbp.unstack_variables(Z1)
-		for cvar in coords.cvarsX:
+		for cvar in coords.cvarsZ:
 			dZ1[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_{tp0}-{tp1}.nc" ) )
 	
 	## And the calibration period
@@ -294,7 +288,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
 	
 	## Split variables and save in a temporary folder
 	dZ0 = sdbp.unstack_variables(Z0)
-	for cvar in coords.cvarsX:
+	for cvar in coords.cvarsZ:
 		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{calib[0]}-{calib[1]}.nc" ) )
 	
 	logger.info( "global_correction:end" )
