@@ -49,8 +49,9 @@ logger.addHandler(logging.NullHandler())
 
 class Coordinates:##{{{
 	
-	def __init__( self , dX , dY , cvarsX = None , cvarsY = None ):
+	def __init__( self , dX , dY , cvarsX = None , cvarsY = None , cvarsZ = None ):
 		
+		logger.info( "XSBCK::Coordinates:init:start" )
 		## Check the two dataset have the same coordinates
 		coordsX = [key for key in dX.coords]
 		coordsY = [key for key in dY.coords]
@@ -79,17 +80,26 @@ class Coordinates:##{{{
 			self.cvarsX  = [key for key in dX.data_vars if len(dX[key].dims) == 3]
 			self.cvarsX.sort()
 		else:
-			self.cvarsX = cvarsX
+			self.cvarsX = cvarsX.split(",")
 		self.dimsX = dX[self.cvarsX[0]].dims
 		
 		if cvarsY is None:
 			self.cvarsY  = [key for key in dY.data_vars if len(dY[key].dims) == 3]
 			self.cvarsY.sort()
 		else:
-			self.cvarsY = cvarsY
+			self.cvarsY = cvarsY.split(",")
 		
-		if not len(self.cvarsY) == len(self.cvarsX):
+		if cvarsZ is None:
+			self.cvarsZ = list(self.cvarsX)
+		else:
+			self.cvarsZ = cvarsZ.split(",")
+		
+		if not len(self.cvarsY) == len(self.cvarsX) == len(self.cvarsZ):
 			raise Exception( "Different numbers of variables!" )
+		
+		if cvarsX is None and cvarsY is None:
+			if ( not all([cvar in self.cvarsX for cvar in self.cvarsY]) ) or (not all([cvar in self.cvarsY for cvar in self.cvarsX])):
+				raise Exception( "Variables from ref or biased differs" )
 		
 		self.ncvar = len(self.cvarsX)
 		
@@ -98,6 +108,7 @@ class Coordinates:##{{{
 		if "grid_mapping" in dX[self.cvarsX[0]].attrs:
 			self.mapping = dX[self.cvarsX[0]].attrs["grid_mapping"]
 		
+		logger.info( "XSBCK::Coordinates:init:end" )
 	
 	def delete_mapping( self , *args ):
 		if self.mapping is None:
@@ -110,6 +121,13 @@ class Coordinates:##{{{
 		
 		return tuple(out)
 	
+	def rename_cvars( self , dX , dY ):
+		for cvarX,cvarY,cvarZ in self.cvars:
+			dY = dY.rename( **{ cvarY : cvarZ } )
+			dX = dX.rename( **{ cvarX : cvarZ } )
+		
+		return dX,dY
+	
 	def summary(self):
 		lstr = []
 		lstr.append( f"Coordinates: {self.dimsX}" )
@@ -120,29 +138,38 @@ class Coordinates:##{{{
 		lstr = lstr + [ f" * {cvarY}" for cvarY in self.cvarsY ]
 		lstr.append( "Biased variables:" )
 		lstr = lstr + [ f" * {cvarX}" for cvarX in self.cvarsX ]
+		lstr.append( "Output variables:" )
+		lstr = lstr + [ f" * {cvarZ}" for cvarZ in self.cvarsZ ]
 		
 		return "\n".join(lstr)
 	
 	@property
 	def cvars(self):
-		return [ (cvarX,cvarY) for cvarX,cvarY in zip(self.cvarsX,self.cvarsY) ]
+		return [ (cvarX,cvarY,cvarZ) for cvarX,cvarY,cvarZ in zip(self.cvarsX,self.cvarsY,self.cvarsZ) ]
 
 ##}}}
 
 def load_data( **kwargs ):##{{{
+	
+	logger.info( "XSBCK:load_data:start" )
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
 	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" )
 	
 	## Identify coordinates
-	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] )
+	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] , kwargs["cvarsZ"] )
 	dX,dY  = coords.delete_mapping(dX,dY)
 	logger.info(coords.summary())
+	
+	## Rename coordinates
+	dX,dY = coords.rename_cvars(dX,dY)
 	
 	## Now define chunk
 	dX = dX.chunk( { "y" : 5 , "x" : 5 , "time" : -1 } )
 	dY = dY.chunk( { "y" : 5 , "x" : 5 , "time" : -1 } )
+	
+	logger.info( "XSBCK:load_data:end" )
 	
 	return dX,dY,coords
 ##}}}
@@ -161,11 +188,11 @@ def build_reference( method ):##{{{
 
 def save_data( coords , **kwargs ):##{{{
 	
-	logger.info( "save_data:start" )
+	logger.info( "XSBCK:save_data:start" )
 	
 	## Read tmp files
 	dZ = {}
-	for cvar in coords.cvarsX:
+	for cvar in coords.cvarsZ:
 		
 		Z1 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
 		Z0 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
@@ -173,6 +200,7 @@ def save_data( coords , **kwargs ):##{{{
 		dZ[cvar] = Z1
 	
 	dZ = xr.Dataset(dZ)
+	
 	
 	## Now loop on input files to define output files
 	for f in kwargs["input_biased"]:
@@ -188,13 +216,13 @@ def save_data( coords , **kwargs ):##{{{
 			calendar = "360_day"
 		
 		## Find the variable
-		for cvar in coords.cvarsX:
-			if cvar in dX: break
-		X = dX[cvar]
+		for cvarX,_,cvarZ in coords.cvars:
+			if cvarX in dX: break
+		X = dX[cvarX]
 		
 		## Build the output file
-		avar = cvar + "Adjust"
-		Z  = dZ[cvar].loc[X.time,:,:]
+		avar = cvarZ + "Adjust"
+		Z  = dZ[cvarZ].loc[X.time,:,:]
 		oZ = { avar : Z }
 		if coords.mapping is not None:
 			oZ[coords.mapping] = 1
@@ -234,14 +262,14 @@ def save_data( coords , **kwargs ):##{{{
 		## ofile
 		ifile  = os.path.basename(f)
 		prefix = f"{avar}_{kwargs['method']}"
-		if cvar in ifile:
-			ofile = ifile.replace(cvar,prefix)
+		if cvarX in ifile:
+			ofile = ifile.replace(cvarX,prefix)
 		else:
 			ofile = f"{prefix}_{ifile}"
 		
 		## And save
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 	
-	logger.info( "save_data:end" )
+	logger.info( "XSBCK:save_data:end" )
 ##}}}
 
