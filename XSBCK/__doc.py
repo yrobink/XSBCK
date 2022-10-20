@@ -72,12 +72,15 @@ Input parameters
     Use this option to disable the dask client.
 --cvarsX
     Model climate variables, in the form var0,var1,var2,...
---cvarsY" , default = None )
+--cvarsY
     Reference climate variables, in the form var0,var1,var2,...
+--cvarsZ
+    Name of output variables, in the form var0,var1,var2,... If not given,
+    cvarsX is used.
 
 Examples
 --------
-xsbck --log --input-obs in1o.nc in2o.nc in3o.nc --input-model in1m.nc in2m.nc in3m.nc --output out1.nc out2.nc out3.nc --method R2D2-L-NV-2L --n-workers 5 --threads-per-worker 2 --memory 3gb
+xsbck --log -iY in1o.nc in2o.nc in3o.nc -iX in1m.nc in2m.nc in3m.nc -oZ out1.nc out2.nc out3.nc --method R2D2-L-NV-2L --n-workers 5 --threads-per-worker 2 --memory 3gb
 
 
 License {}
