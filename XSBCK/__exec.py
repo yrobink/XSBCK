@@ -24,6 +24,7 @@ import sys
 import os
 import logging
 import datetime as dt
+import tempfile
 
 import SBCK as bc
 import xclim
@@ -48,7 +49,6 @@ from .__input import check_inputs
 from .__exceptions import AbortException
 
 from .__tmp import build_tmp_dir
-from .__tmp import delete_tmp_dir
 
 from .__io import load_data
 from .__io import save_data
@@ -72,7 +72,7 @@ logger.addHandler(logging.NullHandler())
 ## Functions ##
 ###############
 
-def run_xsbck( **kwargs ):##{{{
+def run_xsbck( kwargs ):##{{{
 	"""
 	XSBCK.run_xsbck
 	===============
@@ -85,19 +85,31 @@ def run_xsbck( **kwargs ):##{{{
 	
 	## Init the distributed client
 	if not kwargs["disable_dask"]:
-		wclient = dask.distributed.Client( n_workers = kwargs["n_workers"] , threads_per_worker = kwargs["threads_per_worker"] , memory_limit = kwargs["memory"] )
+		dask.config.set( temporary_directory = kwargs["dask_tmp"] )
+		kwargs_client = { "n_workers"          : kwargs["n_workers"] ,
+		                  "threads_per_worker" : kwargs["threads_per_worker"] ,
+		                  "memory_limit"       : kwargs["memory"] }
+		wclient = dask.distributed.Client(**kwargs_client)
 	
-	## Load data
-	dX,dY,coords = load_data(**kwargs)
-	
-	## Build the BC method (non-stationary and stationary)
-	bc_n_kwargs,bc_s_kwargs = build_BC_method( coords , **kwargs )
-	
-	## Correction
-	global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs )
-	
-	## Save
-	save_data( coords , **kwargs )
+	try:
+		## Load data
+		dX,dY,coords = load_data(kwargs)
+		
+		## Build the BC method (non-stationary and stationary)
+		bc_n_kwargs,bc_s_kwargs = build_BC_method( coords , kwargs )
+		
+		## Correction
+		global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
+		
+		## Save
+		save_data( coords , kwargs )
+		
+	except Exception as e:
+		raise e
+	finally:
+		if not kwargs["disable_dask"]:
+			wclient.close()
+			del wclient
 	
 	logger.info( "XSBCK::end" )
 	logger.info(LINE)
@@ -133,7 +145,7 @@ def start_xsbck():##{{{
 	## Serious functions start here
 	try:
 		## Build temporary
-		kwargs["tmp"] = build_tmp_dir(**kwargs)
+		build_tmp_dir(kwargs)
 		
 		## List of all input
 		logger.info("Input parameters:")
@@ -144,7 +156,7 @@ def start_xsbck():##{{{
 		logger.info(LINE)
 		
 		## Check inputs
-		kwargs,abort = check_inputs(**kwargs)
+		abort = check_inputs(kwargs)
 		
 		## User asks help
 		if kwargs["help"]:
@@ -156,14 +168,12 @@ def start_xsbck():##{{{
 			raise AbortException
 		
 		## Go!
-		run_xsbck( **kwargs )
+		run_xsbck(kwargs)
 		
 	except AbortException:
 		pass
 	except Exception as e:
 		logger.error( f"Error: {e}" )
-	finally:
-		delete_tmp_dir(**kwargs)
 	
 	## End
 	walltime1 = dt.datetime.utcnow()

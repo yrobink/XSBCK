@@ -23,6 +23,7 @@
 import os
 import logging
 import argparse
+import tempfile
 
 from .__logs import LINE
 
@@ -54,8 +55,8 @@ def read_inputs():##{{{
 	parser.add_argument( "--n-workers"          , default = 1 , type = int )
 	parser.add_argument( "--threads-per-worker" , default = 1 , type = int )
 	parser.add_argument( "--memory"      , default = "auto" )
-	parser.add_argument( "--tmp-base"    , default = "/tmp/" )
-	parser.add_argument( "--tmp"         , default = None )
+	parser.add_argument( "--tmp"         , default = tempfile.gettempdir() )
+	parser.add_argument( "--dask-tmp"    , default = tempfile.gettempdir() )
 	parser.add_argument( "--window"      , default = "5,10,5" )
 	parser.add_argument( "--calibration" , default = "1976/2005" )
 	parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
@@ -66,6 +67,10 @@ def read_inputs():##{{{
 	
 	kwargs = vars(parser.parse_args())
 	
+	## Switch tmp folder
+	kwargs["tmp_base"] = kwargs["tmp"]
+	kwargs["tmp"] = None
+	
 	##TODO
 	#kwargs["chunk"]       = "?"
 	#TODO add a parameter for year where correction start
@@ -75,7 +80,7 @@ def read_inputs():##{{{
 	return kwargs
 ##}}}
 
-def check_inputs(**kwargs):##{{{
+def check_inputs( kwargs : dict ):##{{{
 	"""
 	XSBCK.check_inputs
 	==================
@@ -141,7 +146,6 @@ def check_inputs(**kwargs):##{{{
 		if kwargs["tmp"] is not None:
 			if not os.path.isdir(kwargs["tmp"]):
 				raise Exception( f"The temporary directory {kwargs['tmp']} is given, but doesn't exists!" )
-			kwargs["tmp_base"] = False
 		else:
 			if not os.path.isdir(kwargs["tmp_base"]):
 				raise Exception( f"The base temporary directory {kwargs['tmp_base']} doesn't exists!" )
@@ -171,7 +175,7 @@ def check_inputs(**kwargs):##{{{
 	logger.info(LINE)
 	
 	## And return
-	return kwargs,abort
+	return abort
 ##}}}
 
 

@@ -149,7 +149,7 @@ class Coordinates:##{{{
 
 ##}}}
 
-def load_data( **kwargs ):##{{{
+def load_data( kwargs : dict ):##{{{
 	
 	logger.info( "XSBCK:load_data:start" )
 	
@@ -166,15 +166,18 @@ def load_data( **kwargs ):##{{{
 	dX,dY = coords.rename_cvars(dX,dY)
 	
 	## Now define chunk
-	dX = dX.chunk( { "y" : 5 , "x" : 5 , "time" : -1 } )
-	dY = dY.chunk( { "y" : 5 , "x" : 5 , "time" : -1 } )
+	chunk = { c : 5 for c in coords.dimsX }
+	chunk["time"] = -1
+	logger.info( "Chunk:" + ", ".join([f"{key}: {chunk[key]}" for key in chunk]) )
+	dX = dX.chunk(chunk)
+	dY = dY.chunk(chunk)
 	
 	logger.info( "XSBCK:load_data:end" )
 	
 	return dX,dY,coords
 ##}}}
 
-def build_reference( method ):##{{{
+def build_reference( method : str ):##{{{
 	
 	ref = ""
 	if "CDFt" in method:
@@ -186,7 +189,7 @@ def build_reference( method ):##{{{
 	return ref
 ##}}}
 
-def save_data( coords , **kwargs ):##{{{
+def save_data( coords : Coordinates , kwargs : dict ):##{{{
 	
 	logger.info( "XSBCK:save_data:start" )
 	

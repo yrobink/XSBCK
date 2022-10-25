@@ -23,33 +23,17 @@
 import os
 import random
 import string
+import tempfile
 
 
 ###############
 ## Functions ##
 ###############
 
-def build_tmp_dir( **kwargs ):##{{{
+def build_tmp_dir( kwargs : dict ):##{{{
 	
-	if kwargs["tmp"] is not None:
-		return kwargs["tmp"]
-	
-	is_not_valid = True
-	while is_not_valid:
-		tmp = os.path.join( kwargs["tmp_base"] , "XSBCK_" + "".join( random.choices( string.ascii_uppercase + string.digits , k = 30 ) ) )
-		is_not_valid = os.path.isdir(tmp)
-	
-	os.makedirs(tmp)
-	return tmp
-##}}}
-
-def delete_tmp_dir( **kwargs ):##{{{
-	tmp = kwargs["tmp"]
-	for f in os.listdir(tmp):
-		os.remove( os.path.join( tmp , f ) )
-	
-	if isinstance( kwargs["tmp_base"] , bool ) and not kwargs["tmp_base"]:
-		os.rmdir(tmp)
+	kwargs["tmp_gen"] = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
+	kwargs["tmp"] = kwargs["tmp_gen"].name
 	
 ##}}}
 

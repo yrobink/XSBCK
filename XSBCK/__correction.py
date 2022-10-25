@@ -35,6 +35,7 @@ import SBCK.ppp as bcp
 
 import inspect
 
+from .__io import Coordinates
 
 ##################
 ## Init logging ##
@@ -71,7 +72,7 @@ class SAR2D2(bc.AR2D2):##{{{
 
 ## TODO : parameter of the BC method, i.e. col_cond for R2D2
 
-def build_pipe( coords , **kwargs ):##{{{
+def build_pipe( coords : Coordinates , kwargs : dict ):##{{{
 	
 	lppps = kwargs.get("ppp")
 	
@@ -169,7 +170,7 @@ def build_pipe( coords , **kwargs ):##{{{
 	return pipe,pipe_kwargs
 ##}}}
 
-def build_BC_method( coords , **kwargs ):##{{{
+def build_BC_method( coords : Coordinates , kwargs : dict ):##{{{
 	
 	
 	bc_method        = bcp.PrePostProcessing
@@ -189,7 +190,7 @@ def build_BC_method( coords , **kwargs ):##{{{
 		bc_method_s_kwargs = { "bc_method" :   SAR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
 	
 	## The pipe
-	pipe,pipe_kwargs = build_pipe( coords , **kwargs )
+	pipe,pipe_kwargs = build_pipe( coords , kwargs )
 	
 	## Global arguments
 	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
@@ -235,7 +236,7 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 		tf1 = tp1 + wright
 ##}}}
 
-def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , **kwargs ):##{{{
+def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):##{{{
 	
 	logger.info( "global_correction:start" )
 	
