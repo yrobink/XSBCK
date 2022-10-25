@@ -146,9 +146,6 @@ def check_inputs( kwargs : dict ):##{{{
 		if kwargs["tmp"] is not None:
 			if not os.path.isdir(kwargs["tmp"]):
 				raise Exception( f"The temporary directory {kwargs['tmp']} is given, but doesn't exists!" )
-		else:
-			if not os.path.isdir(kwargs["tmp_base"]):
-				raise Exception( f"The base temporary directory {kwargs['tmp_base']} doesn't exists!" )
 		
 		## The window
 		kwargs["window"] = tuple([ int(s) for s in kwargs["window"].split(",") ])

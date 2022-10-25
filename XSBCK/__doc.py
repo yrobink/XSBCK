@@ -59,10 +59,8 @@ Input parameters
     Threads numbers per CPU
 --memory
     Memory per worker
---tmp-base [str, default= '/tmp/']
-    Base path to build a random temporary folder. Not used if '--tmp' is set.
---tmp [str, default is None]
-    Temporary folder used. Optional
+--tmp [str, default is tempfile.gettempdir()]
+    Base path to build a random temporary folder.
 --window [w_left,w_predict,w_right, default=5,10,5]
     The moving window for the correction: w_left + w_predict + w_right is the
     fit window, whereas w_predict is the correction part.
