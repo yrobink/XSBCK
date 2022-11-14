@@ -30,6 +30,7 @@ import numpy  as np
 import xarray as xr
 import cftime
 
+import zarr
 import SBCK
 import xclim
 
@@ -149,9 +150,133 @@ class Coordinates:##{{{
 
 ##}}}
 
-def load_data( kwargs : dict ):##{{{
+
+class TmpZarr:##{{{
+	
+	def __init__( self , fzarr , dX = None , shape = None , dims = None , coords = None , chunks = None , persist = False , cvars = None ):##{{{
+		
+		self.fzarr   = fzarr
+		self.persist = persist
+		self.shape   = None
+		self.dims    = None
+		self.coords  = None
+		
+		if dX is not None:
+			self._init_from_dX( dX , cvars )
+		else:
+			self._init_from_args( shape , dims , coords )
+		
+		self.chunks = ( 365 * 3 + 366 , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
+		
+		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.chunks )
+		if dX is not None:
+			for icvar,cvar in enumerate(self.cvars):
+				self.data[:,:,:,icvar] = dX[cvar].values
+	##}}}
+	
+	def _init_from_dX( self , dX , cvars ):##{{{
+		
+		if cvars is None:
+			cvars = [key for key in dX.data_vars]
+		
+		self.shape  = dX[cvars[0]].shape  + (len(cvars),)
+		self.dims   = dX[cvars[0]].dims   + ("cvar",)
+		self.coords = [dX[c] for c in self.dims[:-1]] + [cvars,]
+	##}}}
+	
+	def _init_from_args( self , shape , dims , coords ):##{{{
+		
+		if shape is None or dims is None or coords is None:
+			raise Exception("If dX is None, shape, dims and coords must be set!")
+		self.shape  = shape
+		self.dims   = dims
+		self.coords = coords
+		
+	##}}}
+	
+	def copy( self , fzarr , value = np.nan ):##{{{
+		
+		copy = TmpZarr( fzarr , shape = self.shape , dims = self.dims , coords = self.coords , chunks = self.chunks , persist = self.persist )
+		copy.data[:] = value
+		
+		return copy
+	##}}}
+	
+	def __del__( self ):##{{{
+		if not self.persist:
+			self.clean()
+	##}}}
+	
+	def __str__(self):##{{{
+		
+		out = []
+		out.append( "<XSBCK.TmpZarr>" )
+		out.append( "Dimensions: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.shape)] ) + ")" )
+		out.append( "Chunks: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.chunks)] ) + ")" )
+		out.append( "Coordinates:" )
+		for d,coord in zip(self.dims,self.coords):
+			line = str(coord).split("\n")[-1]
+			if "*" in line:
+				out.append(line)
+			else:
+				out.append( "  * {:{fill}{align}{n}}".format(d,fill=" ",align="<",n=9) )#+ f"({d}) str " + " ".join(coord) )
+		
+		return "\n".join(out)
+	##}}}
+	
+	def __repr__(self):##{{{
+		return self.__str__()
+	##}}}
+	
+	def sel_along_time( self , time ):##{{{
+		
+		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		
+		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) ) , dims = self.dims , coords = [self.time[idx]] + self.coords[1:] ).chunk( { "time" : -1 , **{ d : c for d,c in zip(self.dims[1:],self.chunks[1:])} } )
+		
+		return X
+	##}}}
+	
+	def set_along_time( self , X , time = None ):##{{{
+		
+		time     = time if time is not None else X.time
+		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		
+		self.data.set_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) , X.values )
+		
+		return X
+	##}}}
+	
+	def clean(self):##{{{
+		if os.path.isdir(self.fzarr):
+			for f in os.listdir(self.fzarr):
+				os.remove( os.path.join( self.fzarr , f ) )
+			os.rmdir(self.fzarr)
+	##}}}
+	
+	## Properties {{{
+	@property
+	def time(self):
+		return self.coords[0]
+	
+	@property
+	def cvars(self):
+		return self.coords[-1]
+	##}}}
+	
+##}}}
+
+
+def load_data_nc( kwargs : dict ):##{{{
 	
 	logger.info( "XSBCK:load_data:start" )
+	time0 = dt.datetime.utcnow()
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
@@ -172,10 +297,44 @@ def load_data( kwargs : dict ):##{{{
 	dX = dX.chunk(chunk)
 	dY = dY.chunk(chunk)
 	
+	time1 = dt.datetime.utcnow()
+	logger.info( f"XSBCK:load_data:exec_time = {time1-time0}" )
 	logger.info( "XSBCK:load_data:end" )
 	
 	return dX,dY,coords
 ##}}}
+
+def load_data_zarr( kwargs : dict ):##{{{
+	
+	logger.info( "XSBCK:load_data:start" )
+	time0 = dt.datetime.utcnow()
+	
+	## Read the data
+	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
+	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" )
+	
+	## Identify coordinates
+	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] , kwargs["cvarsZ"] )
+	dX,dY  = coords.delete_mapping(dX,dY)
+	dX,dY  = coords.rename_cvars(dX,dY)
+	logger.info(coords.summary())
+	
+	zX = TmpZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , cvars = coords.cvarsZ )
+	zY = TmpZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , cvars = coords.cvarsZ )
+	
+	time1 = dt.datetime.utcnow()
+	logger.info( f"XSBCK:load_data:exec_time = {time1-time0}" )
+	logger.info( "XSBCK:load_data:end" )
+	
+	return zX,zY,coords
+##}}}
+
+def load_data( kwargs : dict ):##{{{
+	
+	return load_data_zarr(kwargs)
+##}}}
+
+
 
 def build_reference( method : str ):##{{{
 	
@@ -192,6 +351,7 @@ def build_reference( method : str ):##{{{
 def save_data( coords : Coordinates , kwargs : dict ):##{{{
 	
 	logger.info( "XSBCK:save_data:start" )
+	time0 = dt.datetime.utcnow()
 	
 	## Read tmp files
 	dZ = {}
@@ -273,6 +433,8 @@ def save_data( coords : Coordinates , kwargs : dict ):##{{{
 		## And save
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 	
-	logger.info( "XSBCK:save_data:end" )
+	time1 = dt.datetime.utcnow()
+	logger.info( f"XSBCK:save_data:exec_time = {time1-time0}" )
+	logger.info(  "XSBCK:save_data:end" )
 ##}}}
 
