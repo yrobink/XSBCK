@@ -318,6 +318,11 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 		        ).compute().sortby("time").transpose(*dZ.dims)
 		
 		dZ.set_along_time(Z1)
+		
+		## Clean
+		del X1f
+		del X1p
+		del Z1
 	
 	## And the calibration period
 	logger.info( f"Correction in calibration period" )
@@ -339,6 +344,7 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	        ).compute().sortby("time").transpose(*dZ.dims)
 	
 	dZ.set_along_time(Z0)
+	del Z0
 	
 	return dZ
 ##}}}

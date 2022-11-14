@@ -180,7 +180,7 @@ class TmpZarr:##{{{
 		
 		self.chunks  = ( 365 * 4 + is_leap , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
 		self.dchunks = ( 365 * 4 + is_leap , len(self.coords[1]) , len(self.coords[2]) , 1 )
-		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.dchunks )
+		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.dchunks , dtype = "f4" )
 		if dX is not None:
 			for icvar,cvar in enumerate(self.cvars):
 				self.data[:,:,:,icvar] = dX[cvar].values
@@ -247,7 +247,7 @@ class TmpZarr:##{{{
 		if not type(time_fmt) is list: time_fmt = [time_fmt]
 		idx      = fmatch( time_fmt , self.time.values.tolist() )
 		
-		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) ) , dims = self.dims , coords = [self.time[idx]] + self.coords[1:] ).chunk( { "time" : -1 , **{ d : c for d,c in zip(self.dims[1:],self.chunks[1:])} } )
+		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) ) , dims = self.dims , coords = [self.time[idx]] + self.coords[1:] ).chunk( { "time" : -1 , **{ d : c for d,c in zip(self.dims[1:],self.chunks[1:])} } ).astype("float32")
 		
 		return X
 	##}}}
