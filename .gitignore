@@ -133,3 +133,4 @@ dmypy.json
 testing/run_test.sh
 testing/dask-worker-space/*
 testing/misc_tests.py
+testing/*
