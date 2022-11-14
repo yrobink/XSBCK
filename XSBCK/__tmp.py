@@ -32,8 +32,9 @@ import tempfile
 
 def build_tmp_dir( kwargs : dict ):##{{{
 	
-	kwargs["tmp_gen"] = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
+	kwargs["tmp_gen"]  = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
 	kwargs["tmp"] = kwargs["tmp_gen"].name
-	
+	kwargs["tmp_gen_dask"] = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
+	kwargs["tmp_dask"] = kwargs["tmp_gen_dask"].name
 ##}}}
 

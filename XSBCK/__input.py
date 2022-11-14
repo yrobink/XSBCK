@@ -56,7 +56,6 @@ def read_inputs():##{{{
 	parser.add_argument( "--threads-per-worker" , default = 1 , type = int )
 	parser.add_argument( "--memory"      , default = "auto" )
 	parser.add_argument( "--tmp"         , default = tempfile.gettempdir() )
-	parser.add_argument( "--dask-tmp"    , default = tempfile.gettempdir() )
 	parser.add_argument( "--window"      , default = "5,10,5" )
 	parser.add_argument( "--calibration" , default = "1976/2005" )
 	parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )

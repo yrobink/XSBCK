@@ -86,7 +86,7 @@ def run_xsbck( kwargs ):##{{{
 	
 	## Init the distributed client
 	if not kwargs["disable_dask"]:
-		dask.config.set( temporary_directory = kwargs["dask_tmp"] )
+		dask.config.set( temporary_directory = kwargs["tmp_dask"] )
 		kwargs_client = { "n_workers"          : kwargs["n_workers"] ,
 		                  "threads_per_worker" : kwargs["threads_per_worker"] ,
 		                  "memory_limit"       : kwargs["memory"] }
