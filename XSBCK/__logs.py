@@ -63,9 +63,13 @@ def init_logging(logs_):
 		raise UserDefinedLoggingLevelError( f"Invalid log level: {loglevel}; nothing, an integer, 'debug', 'info', 'warning', 'error' or 'critical' expected" )
 	
 	##
-	log_kwargs = { "format" : '%(message)s' , "level" : numlevel }
+	log_kwargs = {
+		"format" : '%(message)s',
+#		"format" : '%(levelname)s:%(name)s:%(funcName)s: %(message)s',
+		"level" : numlevel
+		}
 	if logfile is not None:
 		log_kwargs["filename"] = logfile
-#	logging.basicConfig( format = '%(levelname)s:%(name)s:%(funcName)s: %(message)s' , level = numlevel )
+	
 	logging.basicConfig(**log_kwargs)
 	logging.captureWarnings(True)
