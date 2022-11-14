@@ -25,7 +25,7 @@ import logging
 import argparse
 import tempfile
 
-from .__logs import LINE
+from .__logs import log_start_end
 
 ## Init logging
 logger = logging.getLogger(__name__)
@@ -80,7 +80,9 @@ def read_inputs():##{{{
 	return kwargs
 ##}}}
 
-def check_inputs( kwargs : dict ):##{{{
+## check_inputs ##{{{
+@log_start_end(logger)
+def check_inputs( kwargs : dict ):
 	"""
 	XSBCK.check_inputs
 	==================
@@ -88,8 +90,6 @@ def check_inputs( kwargs : dict ):##{{{
 	Check the input read by read_inputs.
 	
 	"""
-	
-	logger.info("check_inputs:start")
 	
 	keys_input = ["input_biased","input_reference"]
 	available_methods = ["IdBC","CDFt","R2D2"]
@@ -167,9 +167,6 @@ def check_inputs( kwargs : dict ):##{{{
 	except Exception as e:
 		logger.error( f"Error: {e}" )
 		abort = True
-	
-	logger.info("check_inputs:end")
-	logger.info(LINE)
 	
 	## And return
 	return abort

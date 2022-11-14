@@ -35,6 +35,8 @@ import SBCK
 import xclim
 
 from .__release import version
+from .__logs import log_start_end
+
 
 ##################
 ## Init logging ##
@@ -50,9 +52,8 @@ logger.addHandler(logging.NullHandler())
 
 class Coordinates:##{{{
 	
-	def __init__( self , dX , dY , cvarsX = None , cvarsY = None , cvarsZ = None ):
+	def __init__( self , dX , dY , cvarsX = None , cvarsY = None , cvarsZ = None ):##{{{
 		
-		logger.info( "XSBCK::Coordinates:init:start" )
 		## Check the two dataset have the same coordinates
 		coordsX = [key for key in dX.coords]
 		coordsY = [key for key in dY.coords]
@@ -108,10 +109,9 @@ class Coordinates:##{{{
 		self.mapping = None
 		if "grid_mapping" in dX[self.cvarsX[0]].attrs:
 			self.mapping = dX[self.cvarsX[0]].attrs["grid_mapping"]
-		
-		logger.info( "XSBCK::Coordinates:init:end" )
+	##}}}
 	
-	def delete_mapping( self , *args ):
+	def delete_mapping( self , *args ):##{{{
 		if self.mapping is None:
 			return args
 		
@@ -121,15 +121,17 @@ class Coordinates:##{{{
 			out.append(a)
 		
 		return tuple(out)
+	##}}}
 	
-	def rename_cvars( self , dX , dY ):
+	def rename_cvars( self , dX , dY ):##{{{
 		for cvarX,cvarY,cvarZ in self.cvars:
 			dY = dY.rename( **{ cvarY : cvarZ } )
 			dX = dX.rename( **{ cvarX : cvarZ } )
 		
 		return dX,dY
+	##}}}
 	
-	def summary(self):
+	def summary(self):##{{{
 		lstr = []
 		lstr.append( f"Coordinates: {self.dimsX}" )
 		lstr = lstr + [ f" * {c}" for c in self.coords ]
@@ -143,11 +145,16 @@ class Coordinates:##{{{
 		lstr = lstr + [ f" * {cvarZ}" for cvarZ in self.cvarsZ ]
 		
 		return "\n".join(lstr)
+	##}}}
+	
+	## Properties ##{{{
 	
 	@property
 	def cvars(self):
 		return [ (cvarX,cvarY,cvarZ) for cvarX,cvarY,cvarZ in zip(self.cvarsX,self.cvarsY,self.cvarsZ) ]
-
+	
+	##}}}
+	
 ##}}}
 
 
@@ -272,11 +279,9 @@ class TmpZarr:##{{{
 	
 ##}}}
 
-
-def load_data_nc( kwargs : dict ):##{{{
-	
-	logger.info( "XSBCK:load_data:start" )
-	time0 = dt.datetime.utcnow()
+## load_data_nc ##{{{
+@log_start_end(logger)
+def load_data_nc( kwargs : dict ):
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
@@ -297,17 +302,12 @@ def load_data_nc( kwargs : dict ):##{{{
 	dX = dX.chunk(chunk)
 	dY = dY.chunk(chunk)
 	
-	time1 = dt.datetime.utcnow()
-	logger.info( f"XSBCK:load_data:exec_time = {time1-time0}" )
-	logger.info( "XSBCK:load_data:end" )
-	
 	return dX,dY,coords
 ##}}}
 
-def load_data_zarr( kwargs : dict ):##{{{
-	
-	logger.info( "XSBCK:load_data:start" )
-	time0 = dt.datetime.utcnow()
+## load_data_zarr ##{{{
+@log_start_end(logger)
+def load_data_zarr( kwargs : dict ):
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
@@ -322,21 +322,20 @@ def load_data_zarr( kwargs : dict ):##{{{
 	zX = TmpZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , cvars = coords.cvarsZ )
 	zY = TmpZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , cvars = coords.cvarsZ )
 	
-	time1 = dt.datetime.utcnow()
-	logger.info( f"XSBCK:load_data:exec_time = {time1-time0}" )
-	logger.info( "XSBCK:load_data:end" )
-	
 	return zX,zY,coords
 ##}}}
 
-def load_data( kwargs : dict ):##{{{
+## load_data ##{{{
+@log_start_end(logger)
+def load_data( kwargs : dict ):
 	
 	return load_data_zarr(kwargs)
 ##}}}
 
 
-
-def build_reference( method : str ):##{{{
+## build_reference ##{{{
+@log_start_end(logger)
+def build_reference( method : str ):
 	
 	ref = ""
 	if "CDFt" in method:
@@ -348,10 +347,17 @@ def build_reference( method : str ):##{{{
 	return ref
 ##}}}
 
-def save_data( coords : Coordinates , kwargs : dict ):##{{{
-	
-	logger.info( "XSBCK:save_data:start" )
-	time0 = dt.datetime.utcnow()
+## save_data_zarr ##{{{ 
+
+@log_start_end(logger)
+def save_data_zarr( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
+	pass
+
+##}}}
+
+## save_data ##{{{
+@log_start_end(logger)
+def save_data( coords : Coordinates , kwargs : dict ):
 	
 	## Read tmp files
 	dZ = {}
@@ -433,8 +439,5 @@ def save_data( coords : Coordinates , kwargs : dict ):##{{{
 		## And save
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 	
-	time1 = dt.datetime.utcnow()
-	logger.info( f"XSBCK:save_data:exec_time = {time1-time0}" )
-	logger.info(  "XSBCK:save_data:end" )
 ##}}}
 

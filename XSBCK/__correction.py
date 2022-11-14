@@ -37,6 +37,7 @@ import SBCK.ppp as bcp
 import inspect
 
 from .__io import Coordinates
+from .__logs import log_start_end
 
 ##################
 ## Init logging ##
@@ -73,7 +74,9 @@ class SAR2D2(bc.AR2D2):##{{{
 
 ## TODO : parameter of the BC method, i.e. col_cond for R2D2
 
-def build_pipe( coords : Coordinates , kwargs : dict ):##{{{
+## build_pipe ##{{{
+@log_start_end(logger)
+def build_pipe( coords : Coordinates , kwargs : dict ):
 	
 	lppps = kwargs.get("ppp")
 	
@@ -170,7 +173,9 @@ def build_pipe( coords : Coordinates , kwargs : dict ):##{{{
 	return pipe,pipe_kwargs
 ##}}}
 
-def build_BC_method( coords : Coordinates , kwargs : dict ):##{{{
+## build_BC_method ##{{{
+@log_start_end(logger)
+def build_BC_method( coords : Coordinates , kwargs : dict ):
 	
 	bc_method        = bcp.PrePostProcessing
 	
@@ -261,10 +266,9 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 ##}}}
 
 
-def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):##{{{
-	
-	logger.info( "XSBCK:global_correction:start" )
-	time0 = dt.datetime.utcnow()
+## global_correction_zarr ##{{{
+@log_start_end(logger)
+def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	## Parameters
 	months = [m+1 for m in range(12)]
@@ -336,17 +340,12 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	
 	dZ.set_along_time(Z0)
 	
-	time1 = dt.datetime.utcnow()
-	logger.info( f"XSBCK:global_correction:exec_time = {time1-time0}" )
-	logger.info( "XSBCK:global_correction:end" )
-	
-	
 	return dZ
 ##}}}
 
-def global_correction_nc( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):##{{{
-	
-	logger.info( "global_correction:start" )
+## global_correction_nc ##{{{
+@log_start_end(logger)
+def global_correction_nc( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	## Parameters
 	months = [m+1 for m in range(12)]
@@ -430,11 +429,11 @@ def global_correction_nc( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs 
 	dZ0 = sdbp.unstack_variables(Z0)
 	for cvar in coords.cvarsZ:
 		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{calib[0]}-{calib[1]}.nc" ) )
-	
-	logger.info( "global_correction:end" )
 ##}}}
 
-def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):##{{{
+## global_correction ##{{{
+@log_start_end(logger)
+def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	return global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
 ##}}}
 

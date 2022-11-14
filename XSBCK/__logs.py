@@ -21,7 +21,10 @@
 ## Imports ##
 #############
 
+import functools
 import logging
+
+import datetime as dt
 
 from .__exceptions import UserDefinedLoggingLevelError
 
@@ -73,3 +76,22 @@ def init_logging(logs_):
 	
 	logging.basicConfig(**log_kwargs)
 	logging.captureWarnings(True)
+
+
+def log_start_end(plog):
+	
+	def _decorator(f):
+		
+		@functools.wraps(f)
+		def f_decor(*args,**kwargs):
+			plog.info(f"XSBCK:{f.__name__}:start")
+			time0 = dt.datetime.utcnow()
+			out = f(*args,**kwargs)
+			time1 = dt.datetime.utcnow()
+			plog.info(f"XSBCK:{f.__name__}:walltime:{time1-time0}")
+			plog.info(f"XSBCK:{f.__name__}:end")
+			return out
+		
+		return f_decor
+	
+	return _decorator
