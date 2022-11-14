@@ -178,9 +178,9 @@ class TmpZarr:##{{{
 		except:
 			is_leap = 0
 		
-		self.chunks = ( 365 * 4 + is_leap , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
-		
-		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.chunks )
+		self.chunks  = ( 365 * 4 + is_leap , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
+		self.dchunks = ( 365 * 4 + is_leap , len(self.coords[1]) , len(self.coords[2]) , 1 )
+		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.dchunks )
 		if dX is not None:
 			for icvar,cvar in enumerate(self.cvars):
 				self.data[:,:,:,icvar] = dX[cvar].values
