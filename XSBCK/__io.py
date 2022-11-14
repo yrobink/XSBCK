@@ -173,7 +173,12 @@ class TmpZarr:##{{{
 		else:
 			self._init_from_args( shape , dims , coords )
 		
-		self.chunks = ( 365 * 3 + 366 , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
+		try:
+			is_leap = not ( isinstance(dX.time.values[0],cftime.DatetimeNoLeap) or isinstance(dX.time.values[0],cftime.Datetime360Day) )
+		except:
+			is_leap = 0
+		
+		self.chunks = ( 365 * 4 + is_leap , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
 		
 		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.chunks )
 		if dX is not None:
@@ -247,6 +252,19 @@ class TmpZarr:##{{{
 		return X
 	##}}}
 	
+	def sel_cvar_along_time( self , time , cvar ):##{{{
+		
+		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		icvar    = self.cvars.index(cvar)
+		
+		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),icvar) ).squeeze() , dims = self.dims[:-1] , coords = [self.time[idx]] + self.coords[1:-1] ).chunk( { "time" : -1 , **{ d : -1 for d in self.dims[1:-1] } } )
+		
+		return X
+	##}}}
+	
 	def set_along_time( self , X , time = None ):##{{{
 		
 		time     = time if time is not None else X.time
@@ -278,6 +296,7 @@ class TmpZarr:##{{{
 	##}}}
 	
 ##}}}
+
 
 ## load_data_nc ##{{{
 @log_start_end(logger)
@@ -334,7 +353,6 @@ def load_data( kwargs : dict ):
 
 
 ## build_reference ##{{{
-@log_start_end(logger)
 def build_reference( method : str ):
 	
 	ref = ""
@@ -347,17 +365,10 @@ def build_reference( method : str ):
 	return ref
 ##}}}
 
-## save_data_zarr ##{{{ 
 
+## save_data_nc ##{{{
 @log_start_end(logger)
-def save_data_zarr( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
-	pass
-
-##}}}
-
-## save_data ##{{{
-@log_start_end(logger)
-def save_data( coords : Coordinates , kwargs : dict ):
+def save_data_nc( coords : Coordinates , kwargs : dict ):
 	
 	## Read tmp files
 	dZ = {}
@@ -438,6 +449,94 @@ def save_data( coords : Coordinates , kwargs : dict ):
 		
 		## And save
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
+	
+##}}}
+
+## save_data_zarr ##{{{ 
+
+@log_start_end(logger)
+def save_data_zarr( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
+	
+	## Build mapping between cvarsX and cvarsZ
+	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
+	
+	for f in kwargs["input_biased"]:
+		
+		logger.info( f" * {os.path.basename(f)}" )
+		
+		## Load data
+		dX = xr.open_dataset(f)
+		
+		## Find calendar
+		calendar = "gregorian"
+		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
+			calendar = "365_day"
+		if isinstance(dX.time.values[0],cftime.Datetime360Day):
+			calendar = "360_day"
+		
+		## Find the variable
+		for cvarX,_,cvarZ in coords.cvars:
+			if cvarX in dX: break
+		X = dX[cvarX]
+		
+		## Build the output file
+		avar = cvarZ + "Adjust"
+		Z  = dZ.sel_cvar_along_time( X.time , cvarZ )
+		odata = { avar : Z }
+		for c in coords.coords:
+			odata[c] = dX[c]
+		if coords.mapping is not None:
+			odata[coords.mapping] = 1
+		odata = xr.Dataset(odata)
+		
+		## Add global attributes
+		odata.attrs = dX.attrs
+		
+		## Add variables attributes
+		odata[avar].attrs = X.attrs
+		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
+		
+		## Add mapping? attributes
+		if coords.mapping is not None:
+			odata[coords.mapping].attrs = dX[coords.mapping].attrs
+		
+		## Add coords attributes
+		for c in coords.coords:
+			odata[c].attrs = dX[c].attrs
+		
+		## Add BC attributes
+		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
+		odata.attrs["bc_method"] = kwargs["method"]
+		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
+		odata.attrs["bc_window"] = ",".join( [str(x) for x in kwargs["window"]] )
+		odata.attrs["bc_reference"] = build_reference(kwargs["method"])
+		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","xclim","numpy","xarray"],[SBCK,xclim,np,xr]) ] )
+		
+		## The encoding
+		encoding = {"time" : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : "days since " + str(dZ.time.values[0])[:10] } }
+		for c in coords.coords:
+			encoding[c] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape }
+		encoding[avar]  = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+		if coords.mapping is not None:
+			encoding[coords.mapping] = { "dtype" : "int32" }
+		
+		## ofile
+		ifile  = os.path.basename(f)
+		prefix = f"{avar}_{kwargs['method']}"
+		if cvarX in ifile:
+			ofile = ifile.replace(cvarX,prefix)
+		else:
+			ofile = f"{prefix}_{ifile}"
+		
+		## And save
+		logger.info( f"     => {os.path.join( kwargs['output_dir'] , ofile )}" )
+		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
+##}}}
+
+## save_data ##{{{
+def save_data( *args , **kwargs ):
+	
+	save_data_zarr(*args,**kwargs)
 	
 ##}}}
 

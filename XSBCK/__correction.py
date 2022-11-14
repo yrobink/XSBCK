@@ -206,6 +206,9 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 
 def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 	
+	logger.info( f"Iterate over {wleft}-{wpred}-{wright} window" )
+	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
+	
 	tbeg = int(tbeg_)
 	tend = int(tend_)
 	
@@ -232,6 +235,7 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 			rtp1 = tend
 		
 		## The return
+		logger.info( f" *     {rtf0} /         {rtp0} /          {rtp1} /      {rtf1}" )
 		yield [str(x) for x in [rtf0,rtp0,rtp1,rtf1]]
 		
 		## And iteration
@@ -287,11 +291,7 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	tend = str(coords.time[-1].values)[:4]
 	
 	## Loop over time for projection period
-	logger.info( f"Iterate over time {wleft}-{wpred}-{wright}" )
-	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright ):
-		
-		logger.info( f" *     {tf0} /         {tp0} /          {tp1} /      {tf1}" )
 		
 		## Build data in projection period
 		X1f = dX.sel_along_time(slice(tf0,tf1)).rename( time = "timeX1f" )
@@ -368,11 +368,7 @@ def global_correction_nc( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs 
 	tend = str(coords.time[-1].values)[:4]
 	
 	## Loop over time
-	logger.info( f"Iterate over time {wleft}-{wpred}-{wright}" )
-	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright ):
-		
-		logger.info( f" *     {tf0} /         {tp0} /          {tp1} /      {tf1}" )
 		
 		## Build data in projection period
 		dX1 = dX.sel( time = slice(tf0,tf1) )

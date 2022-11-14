@@ -52,6 +52,7 @@ from .__tmp import build_tmp_dir
 
 from .__io import load_data
 from .__io import save_data
+from .__io import save_data_zarr
 from .__correction import build_BC_method
 from .__correction import global_correction
 
@@ -81,7 +82,7 @@ def run_xsbck( kwargs ):##{{{
 	
 	"""
 	
-	logger.info( "XSBCK::start" )
+	logger.info( "XSBCK:start" )
 	
 	## Init the distributed client
 	if not kwargs["disable_dask"]:
@@ -99,10 +100,10 @@ def run_xsbck( kwargs ):##{{{
 		bc_n_kwargs,bc_s_kwargs = build_BC_method( coords , kwargs )
 		
 		## Correction
-		global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
+		dZ = global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
 		
 		## Save
-		save_data( coords , kwargs )
+		save_data_zarr( dZ , coords , kwargs )
 		
 	except Exception as e:
 		raise e
@@ -111,7 +112,7 @@ def run_xsbck( kwargs ):##{{{
 			wclient.close()
 			del wclient
 	
-	logger.info( "XSBCK::end" )
+	logger.info( "XSBCK:end" )
 	logger.info(LINE)
 ##}}}
 
@@ -157,6 +158,7 @@ def start_xsbck():##{{{
 		
 		## Check inputs
 		abort = check_inputs(kwargs)
+		logger.info(LINE)
 		
 		## User asks help
 		if kwargs["help"]:
