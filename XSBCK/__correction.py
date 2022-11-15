@@ -22,6 +22,7 @@
 
 import sys
 import os
+import gc
 import logging
 import datetime as dt
 
@@ -323,6 +324,7 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 		del X1f
 		del X1p
 		del Z1
+		gc.collect()
 	
 	## And the calibration period
 	logger.info( f"Correction in calibration period" )
@@ -345,6 +347,7 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	
 	dZ.set_along_time(Z0)
 	del Z0
+	gc.collect()
 	
 	return dZ
 ##}}}
