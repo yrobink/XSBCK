@@ -339,13 +339,15 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	                          input_core_dims  = input_core_dims ,
 	                          kwargs           = bc_ufunc_kwargs ,
 	                          output_core_dims = output_core_dims ,
-	                          output_dtypes    = X1p.dtype ,
+	                          output_dtypes    = X0.dtype ,
 	                          vectorize        = True ,
 	                          dask             = "parallelized" ,
 	                          keep_attrs       = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
 	        ).compute().sortby("time").transpose(*dZ.dims)
 	
 	dZ.set_along_time(Z0)
+	del X0
+	del Y0
 	del Z0
 	gc.collect()
 	

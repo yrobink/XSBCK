@@ -57,6 +57,7 @@ def read_inputs():##{{{
 	parser.add_argument( "--memory"      , default = "auto" )
 	parser.add_argument( "--tmp"         , default = tempfile.gettempdir() )
 	parser.add_argument( "--window"      , default = "5,10,5" )
+	parser.add_argument( "--chunks"      , default = None )
 	parser.add_argument( "--calibration" , default = "1976/2005" )
 	parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
 	parser.add_argument( "--cvarsX" , default = None )
@@ -70,9 +71,7 @@ def read_inputs():##{{{
 	kwargs["tmp_base"] = kwargs["tmp"]
 	kwargs["tmp"] = None
 	
-	##TODO
-	#kwargs["chunk"]       = "?"
-	#TODO add a parameter for year where correction start
+	##TODO add a parameter for year where correction start
 	##
 	##
 	
@@ -150,6 +149,14 @@ def check_inputs( kwargs : dict ):
 		kwargs["window"] = tuple([ int(s) for s in kwargs["window"].split(",") ])
 		if not len(kwargs["window"]) == 3:
 			raise Exception( f"Bad arguments for the window ({kwargs['window']})" )
+		
+		## The chunk
+		chunks = kwargs.get("chunks")
+		if chunks is None:
+			chunks = -1
+		else:
+			chunks = [int(x) for x in chunks.split(",")]
+		kwargs["chunks"] = chunks
 		
 		## The calibration period
 		kwargs["calibration"] = tuple(kwargs["calibration"].split("/"))

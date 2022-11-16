@@ -61,6 +61,10 @@ Input parameters
     Memory per worker
 --tmp [str, default is tempfile.gettempdir()]
     Base path to build a random temporary folder.
+--chunks [chunk_lat,chunk_lon]
+    Spatial chunk of the dataset. If not given, default value is:
+    chunk_lat = int(nlat / sqrt(n_threads))
+    chunk_lon = int(nlon / sqrt(n_threads))
 --window [w_left,w_predict,w_right, default=5,10,5]
     The moving window for the correction: w_left + w_predict + w_right is the
     fit window, whereas w_predict is the correction part.

@@ -23,6 +23,7 @@
 
 import sys
 import os
+import gc
 import logging
 import datetime as dt
 
@@ -84,6 +85,8 @@ class Coordinates:##{{{
 		else:
 			self.cvarsX = cvarsX.split(",")
 		self.dimsX = dX[self.cvarsX[0]].dims
+		self.ny    = dX[self.dimsX[1]].size
+		self.nx    = dX[self.dimsX[2]].size
 		
 		if cvarsY is None:
 			self.cvarsY  = [key for key in dY.data_vars if len(dY[key].dims) == 3]
@@ -178,7 +181,7 @@ class TmpZarr:##{{{
 		except:
 			is_leap = 0
 		
-		self.chunks  = ( 365 * 4 + is_leap , 5 , 5 , len(self.cvars) ) if chunks is None else chunks
+		self.chunks  = ( 365 * 4 + is_leap , chunks[0] , chunks[1] , len(self.cvars) )
 		self.dchunks = ( 365 * 4 + is_leap , len(self.coords[1]) , len(self.coords[2]) , 1 )
 		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.dchunks , dtype = "f4" )
 		if dX is not None:
@@ -338,8 +341,23 @@ def load_data_zarr( kwargs : dict ):
 	dX,dY  = coords.rename_cvars(dX,dY)
 	logger.info(coords.summary())
 	
-	zX = TmpZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , cvars = coords.cvarsZ )
-	zY = TmpZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , cvars = coords.cvarsZ )
+	## Now find chunks
+	chunks = kwargs["chunks"]
+	if chunks == -1:
+		n_threads = kwargs["n_workers"] * kwargs["threads_per_worker"]
+		ny        = coords.ny
+		nx        = coords.nx
+		chunks    = [ int(ny / np.sqrt(n_threads)) , int(nx / np.sqrt(n_threads)) ]
+		logger.info("Chunks found: {},{}".format(*chunks))
+	
+	## Init TmpZarr
+	zX = TmpZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , chunks = chunks , cvars = coords.cvarsZ )
+	zY = TmpZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , chunks = chunks , cvars = coords.cvarsZ )
+	
+	## Free memory
+	del dX
+	del dY
+	gc.collect()
 	
 	return zX,zY,coords
 ##}}}
