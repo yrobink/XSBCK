@@ -58,6 +58,25 @@ logger.addHandler(logging.NullHandler())
 ## build_pipe ##{{{
 @log_start_end(logger)
 def build_pipe( coords : Coordinates , kwargs : dict ):
+	"""
+	XSBCK.build_pipe
+	================
+	Function used to build PrePostProcessing class from user input
+	
+	Arguments
+	---------
+	coords:
+		Coordinates class of the data
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	pipe:
+		List of class based on SBCK.ppp.PrePostProcessing
+	pipe_kwargs:
+		List of kwargs passed to elements of pipe
+	"""
 	
 	lppps = kwargs.get("ppp")
 	
@@ -157,6 +176,25 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 ## build_BC_method ##{{{
 @log_start_end(logger)
 def build_BC_method( coords : Coordinates , kwargs : dict ):
+	"""
+	XSBCK.build_BC_method
+	=====================
+	Function used to build the bias correction class class from user input
+	
+	Arguments
+	---------
+	coords:
+		Coordinates class of the data
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	bc_n_kwargs:
+		dict describing the non-stationary BC method used
+	bc_s_kwargs:
+		dict describing the stationary BC method used
+	"""
 	
 	bc_method        = bcp.PrePostProcessing
 	
@@ -186,6 +224,39 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 
 
 def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
+	"""
+	XSBCK.yearly_window
+	===================
+	Generator to iterate over the time axis between tbeg_ and tend_, with a
+	fitting window of lenght wleft + wpred + wright, and a predict window of
+	length wpred.
+	
+	Arguments
+	---------
+	tbeg_:
+		Starting year
+	tend_:
+		Ending year
+	wleft:
+		Lenght of left window
+	wpred:
+		Lenght of middle / predict window
+	wright:
+		Lenght of right window
+	
+	Returns
+	-------
+	The generator
+	
+	Examples
+	--------
+	>>> for tf0,tp0,tp1,tf1 in yearly_window( 1951 , 2100 , 5 , 50 , 5 ):
+	>>> 	print( f" *     {rtf0} /         {rtp0} /          {rtp1} /      {rtf1}" )
+	>>> ## Output:
+	>>> ## 1951 /         1951 /          2000 /      2010
+	>>> ## 1996 /         2001 /          2050 /      2055
+	>>> ## 2041 /         2051 /          2100 /      2100
+	"""
 	
 	logger.info( f"Iterate over {wleft}-{wpred}-{wright} window" )
 	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
@@ -227,6 +298,31 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 ##}}}
 
 def sbck_ns_ufunc( Y0 , X0 , X1f , X1p , cls , **kwargs ):##{{{
+	"""
+	XSBCK.sbck_ns_ufunc
+	===================
+	Non-stationary bias correction ufunc passed to xr.apply_ufunc.
+	
+	Arguments
+	---------
+	Y0:
+		Ref in calibration period
+	X0:
+		Biased data in calibration period
+	X1f:
+		Biased data in projection period, for the fit
+	X1p:
+		Biased data in projection period, for the predict
+	cls:
+		class of bias correction method (class of SBCK or SBCK.ppp)
+	kwargs:
+		All keywords arguments are passed to cls
+	
+	Returns
+	-------
+	Z1p:
+		Corrected data in projection period
+	"""
 	
 	sbck_cls = cls(**kwargs)
 	sbck_cls.fit( Y0 = Y0 , X0 = X0 , X1 = X1f )
@@ -239,6 +335,27 @@ def sbck_ns_ufunc( Y0 , X0 , X1f , X1p , cls , **kwargs ):##{{{
 ##}}}
 
 def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
+	"""
+	XSBCK.sbck_s_ufunc
+	==================
+	Stationary bias correction ufunc passed to xr.apply_ufunc.
+	
+	Arguments
+	---------
+	Y0:
+		Ref in calibration period
+	X0:
+		Biased data in calibration period
+	cls:
+		class of bias correction method (class of SBCK or SBCK.ppp)
+	kwargs:
+		All keywords arguments are passed to cls
+	
+	Returns
+	-------
+	Z0:
+		Corrected data in calibration period
+	"""
 	
 	sbck_cls = cls(**kwargs)
 	sbck_cls.fit( Y0 = Y0 , X0 = X0 )
@@ -254,6 +371,31 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 ## global_correction ##{{{
 @log_start_end(logger)
 def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
+	"""
+	XSBCK.global_correction
+	=======================
+	Main function for the correction
+	
+	Arguments
+	---------
+	dX:
+		The TmpZarr of the model
+	dY:
+		The TmpZarr of the reference
+	coords:
+		Coordinates class of the data
+	bc_n_kwargs:
+		dict describing the non-stationary BC method used
+	bc_s_kwargs:
+		dict describing the stationary BC method used
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	dZ:
+		The TmpZarr of the corrected dataset
+	"""
 	
 	## Parameters
 	months = [m+1 for m in range(12)]

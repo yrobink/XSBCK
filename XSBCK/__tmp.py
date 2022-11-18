@@ -31,6 +31,14 @@ import tempfile
 ###############
 
 def build_tmp_dir( kwargs : dict ):##{{{
+	"""
+	XSBCK.build_tmp_dir
+	===================
+	
+	Build the temporary directories
+	
+	
+	"""
 	
 	kwargs["tmp_gen"]  = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
 	kwargs["tmp"] = kwargs["tmp_gen"].name

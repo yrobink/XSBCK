@@ -34,7 +34,7 @@ from .__exceptions import UserDefinedLoggingLevelError
 
 LINE = "=" * 80
 
-def init_logging(logs_):
+def init_logging(logs_):##{{{
 	"""
 	XSBCK.init_logging
 	==================
@@ -76,10 +76,21 @@ def init_logging(logs_):
 	
 	logging.basicConfig(**log_kwargs)
 	logging.captureWarnings(True)
+##}}}
 
-
-def log_start_end(plog):
+def log_start_end(plog):##{{{
+	"""
+	XSBCK.log_start_end
+	===================
 	
+	Decorator to add to the log the start / end of a function, and a walltime
+	
+	Parameters
+	----------
+	plog:
+		A logger from logging
+	
+	"""
 	def _decorator(f):
 		
 		@functools.wraps(f)
@@ -95,3 +106,6 @@ def log_start_end(plog):
 		return f_decor
 	
 	return _decorator
+##}}}
+
+

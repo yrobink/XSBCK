@@ -52,8 +52,39 @@ logger.addHandler(logging.NullHandler())
 #########
 
 class Coordinates:##{{{
+	"""
+	XSBCK.Coordinates
+	=================
+	
+	Class used to contain informations about dimensions and coordinates of the
+	dataset.
+	
+	"""
 	
 	def __init__( self , dX , dY , cvarsX = None , cvarsY = None , cvarsZ = None ):##{{{
+		"""
+		XSBCK.Coordinates.__init__
+		==========================
+		
+		Arguments
+		---------
+		dX: [xarray.Dataset]
+			The biased data
+		dY: [xarray.Dataset]
+			The reference data
+		cvarsX: [list]
+			List of variables from X
+		cvarsY: [list]
+			List of variables from Y
+		cvarsZ: [list]
+			List of name of output variables
+		
+		Notes
+		-----
+		cvarsX, cvarsY and cvarsZ must be in the same order. Used when the
+		reference and the biased data don't use the same name.
+		
+		"""
 		
 		## Check the two dataset have the same coordinates
 		coordsX = [key for key in dX.coords]
@@ -115,6 +146,21 @@ class Coordinates:##{{{
 	##}}}
 	
 	def delete_mapping( self , *args ):##{{{
+		"""
+		XSBCK.Coordinates.delete_mapping
+		================================
+		
+		Used to delete the mapping variables if necessary
+		
+		Arguments
+		---------
+		*args: [xarray.Dataset]
+		
+		Returns
+		-------
+		*args
+		
+		"""
 		if self.mapping is None:
 			return args
 		
@@ -127,6 +173,23 @@ class Coordinates:##{{{
 	##}}}
 	
 	def rename_cvars( self , dX , dY ):##{{{
+		"""
+		XSBCK.Coordinates.rename_cvars
+		==============================
+		
+		Rename the cvars of dX and dY such that the name will be cvarsZ
+		
+		Arguments
+		---------
+		dX: [xarray.Dataset]
+		dY: [xarray.Dataset]
+		
+		Returns
+		-------
+		dX: [xarray.Dataset]
+		dY: [xarray.Dataset]
+		
+		"""
 		for cvarX,cvarY,cvarZ in self.cvars:
 			dY = dY.rename( **{ cvarY : cvarZ } )
 			dX = dX.rename( **{ cvarX : cvarZ } )
@@ -135,6 +198,13 @@ class Coordinates:##{{{
 	##}}}
 	
 	def summary(self):##{{{
+		"""
+		XSBCK.Coordinates.summary
+		=========================
+		
+		Return a summary of the Coordinates
+		
+		"""
 		lstr = []
 		lstr.append( f"Coordinates: {self.dimsX}" )
 		lstr = lstr + [ f" * {c}" for c in self.coords ]
@@ -162,8 +232,40 @@ class Coordinates:##{{{
 
 
 class TmpZarr:##{{{
+	"""
+	XSBCK.TmpZarr
+	=============
+	
+	Class managing a zarr file, to acces with the time axis
+	
+	"""
 	
 	def __init__( self , fzarr , dX = None , shape = None , dims = None , coords = None , chunks = None , persist = False , cvars = None ):##{{{
+		"""
+		XSBCK.TmpZarr.__init__
+		======================
+		
+		Arguments
+		---------
+		fzarr:
+			The file used as zarr file
+		dX: [xarray.Dataset]
+			Data to copy in the zarr file. If None, a zero file is init with
+			the shape, dims and coords parameters
+		shape:
+			Only used if dX is None
+		dims:
+			Only used if dX is None
+		coords:
+			Only used if dX is None
+		chunks:
+			The chunk of the data
+		persist:
+			If False, the fzarr file is removed when the object is deleted.
+		cvars:
+			List of cvar
+		 
+		"""
 		
 		self.fzarr   = fzarr
 		self.persist = persist
@@ -244,6 +346,20 @@ class TmpZarr:##{{{
 	##}}}
 	
 	def sel_along_time( self , time ):##{{{
+		"""
+		XSBCK.TmpZarr.sel_along_time
+		============================
+		
+		Arguments
+		---------
+		time:
+			The time values to extract
+		
+		Returns
+		-------
+		A chunked xarray.DataArray
+		 
+		"""
 		
 		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
 		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
@@ -256,6 +372,24 @@ class TmpZarr:##{{{
 	##}}}
 	
 	def sel_cvar_along_time( self , time , cvar ):##{{{
+		"""
+		XSBCK.TmpZarr.sel_cvar_along_time
+		=================================
+		
+		To select only on cvar
+		
+		Arguments
+		---------
+		time:
+			The time values to extract
+		cvar:
+			The climate variable selected
+		
+		Returns
+		-------
+		A NOT chunked xarray.DataArray
+		 
+		"""
 		
 		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
 		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
@@ -269,6 +403,20 @@ class TmpZarr:##{{{
 	##}}}
 	
 	def set_along_time( self , X , time = None ):##{{{
+		"""
+		XSBCK.TmpZarr.set_along_time
+		============================
+		
+		To set X at time values in the zarr file
+		
+		Arguments
+		---------
+		X:
+			A data array
+		time:
+			The time values to set
+		 
+		"""
 		
 		time     = time if time is not None else X.time
 		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
@@ -278,10 +426,15 @@ class TmpZarr:##{{{
 		
 		self.data.set_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) , X.values )
 		
-		return X
 	##}}}
 	
 	def clean(self):##{{{
+		"""
+		XSBCK.TmpZarr.clean
+		===================
+		Remove the fzarr file
+		 
+		"""
 		if os.path.isdir(self.fzarr):
 			for f in os.listdir(self.fzarr):
 				os.remove( os.path.join( self.fzarr , f ) )
@@ -304,6 +457,25 @@ class TmpZarr:##{{{
 ## load_data ##{{{
 @log_start_end(logger)
 def load_data( kwargs : dict ):
+	"""
+	XSBCK.load_data
+	===============
+	Function used to read data and copy in a temporary zarr file
+	
+	Arguments
+	---------
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	zX:
+		TmpZarr file of the biased dataset
+	zY:
+		TmpZarr file of the reference dataset
+	coords:
+		Coordinates class of the data
+	"""
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
@@ -339,6 +511,20 @@ def load_data( kwargs : dict ):
 
 ## build_reference ##{{{
 def build_reference( method : str ):
+	"""
+	XSBCK.build_reference
+	=====================
+	Function used to build a string of the reference article of the method.
+	
+	Arguments
+	---------
+	method:
+		str
+	
+	Returns
+	-------
+	str
+	"""
 	
 	ref = ""
 	if "CDFt" in method:
@@ -354,6 +540,25 @@ def build_reference( method : str ):
 
 @log_start_end(logger)
 def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
+	"""
+	XSBCK.save_data
+	===============
+	Function used to read the TmpZarr file of the corrected dataset and rewrite
+	in netcdf.
+	
+	Arguments
+	---------
+	dZ:
+		TmpZarr file of the corrected dataset
+	coords:
+		Coordinates class of the data
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	None
+	"""
 	
 	## Build mapping between cvarsX and cvarsZ
 	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
