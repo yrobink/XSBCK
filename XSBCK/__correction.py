@@ -49,23 +49,6 @@ logger.addHandler(logging.NullHandler())
 ## Classes ##
 #############
 
-class SAR2D2(bc.AR2D2):##{{{
-	
-	def __init__( self , col_cond = [0] , lag_search = 1 , lag_keep = 1 , bc_method = bc.QM , shuffle = "quantile" , reverse = False , **bckwargs ):##{{{
-		bc.AR2D2.__init__( self , col_cond , lag_search , lag_keep , bc_method , shuffle , reverse , **bckwargs )
-	##}}}
-	
-	def fit( self , Y0 , X0 ):##{{{
-		bc.AR2D2.fit( self , Y0 , X0 )
-	##}}}
-	
-	def predict( self , X0 ):##{{{
-		return bc.AR2D2.predict( self , X0 = X0 )
-	##}}}
-	
-##}}}
-
-
 ###############
 ## Functions ##
 ###############
@@ -189,7 +172,7 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
 		lag_search = 2 * lag_keep
 		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.CDFt } }
-		bc_method_s_kwargs = { "bc_method" :   SAR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
+		bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
 	
 	## The pipe
 	pipe,pipe_kwargs = build_pipe( coords , kwargs )
