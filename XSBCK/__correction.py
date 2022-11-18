@@ -271,9 +271,9 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 ##}}}
 
 
-## global_correction_zarr ##{{{
+## global_correction ##{{{
 @log_start_end(logger)
-def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
+def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	## Parameters
 	months = [m+1 for m in range(12)]
@@ -352,96 +352,6 @@ def global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwarg
 	gc.collect()
 	
 	return dZ
-##}}}
-
-## global_correction_nc ##{{{
-@log_start_end(logger)
-def global_correction_nc( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
-	
-	## Parameters
-	months = [m+1 for m in range(12)]
-	
-	## Extract calibration period
-	calib = kwargs["calibration"]
-	dY0 = dY.sel( time = slice(*calib) )
-	dX0 = dX.sel( time = slice(*calib) )
-	
-	## Prepare data in calibration period
-	X0 = sdbp.stack_variables(dX0).rename( time = "timeX0" )
-	Y0 = sdbp.stack_variables(dY0).rename( time = "timeY0" )
-	if coords.ncvar > 1:
-		X0 = X0.sel( multivar = coords.cvarsZ )
-		Y0 = Y0.sel( multivar = coords.cvarsZ )
-	
-	## Init time
-	wleft,wpred,wright = kwargs["window"]
-	tbeg = str(coords.time[0].values)[:4]
-	tend = str(coords.time[-1].values)[:4]
-	
-	## Loop over time
-	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright ):
-		
-		## Build data in projection period
-		dX1 = dX.sel( time = slice(tf0,tf1) )
-		X1f  = sdbp.stack_variables(dX1).rename( time = "timeX1f" )
-		if coords.ncvar > 1:
-			X1f = X1f.sel( multivar = coords.cvarsZ )
-		X1p = X1f.sel( timeX1f = slice(tp0,tp1) ).rename( timeX1f = "timeX1p" )
-		
-		## dim names
-		input_core_dims  = [("timeY0","multivar"),("timeX0","multivar"),("timeX1f","multivar"),("timeX1p","multivar")]
-		output_core_dims = [("timeX1p","multivar")]
-		bc_ufunc_kwargs  = { "cls" : bcp.PrePostProcessing , **bc_n_kwargs }
-		
-		## Correction
-		Z1 = xr.concat(
-		        [ xr.apply_ufunc( sbck_ns_ufunc , Y0.groupby("timeY0.month")[m] ,
-		                                          X0.groupby("timeX0.month")[m] ,
-		                                          X1f.groupby("timeX1f.month")[m] ,
-		                                          X1p.groupby("timeX1p.month")[m] ,
-		                          input_core_dims = input_core_dims ,
-		                          kwargs = bc_ufunc_kwargs ,
-		                          output_core_dims = output_core_dims ,
-		                          output_dtypes = X1p.dtype ,
-		                          vectorize = True ,
-		                          dask = "parallelized" ,
-		                          keep_attrs = True ).rename( timeX1p = "time" ) for m in months] , dim = "time"
-		        ).compute().sortby("time")
-		
-		## Split variables and save in a temporary folder
-		dZ1 = sdbp.unstack_variables(Z1)
-		for cvar in coords.cvarsZ:
-			dZ1[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_{tp0}-{tp1}.nc" ) )
-	
-	## And the calibration period
-	logger.info( f"Correction in calibration period" )
-	
-	input_core_dims  = [("timeY0","multivar"),("timeX0","multivar")]
-	output_core_dims = [("timeX0","multivar")]
-	bc_ufunc_kwargs  = { "cls" : bcp.PrePostProcessing , **bc_s_kwargs }
-	
-	Z0 = xr.concat(
-	        [ xr.apply_ufunc( sbck_s_ufunc , Y0.groupby("timeY0.month")[m] ,
-	                                         X0.groupby("timeX0.month")[m] ,
-	                          input_core_dims = input_core_dims ,
-	                          kwargs = bc_ufunc_kwargs ,
-	                          output_core_dims = output_core_dims ,
-	                          output_dtypes = X1p.dtype ,
-	                          vectorize = True ,
-	                          dask = "parallelized" ,
-	                          keep_attrs = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
-	        ).compute().sortby("time")
-	
-	## Split variables and save in a temporary folder
-	dZ0 = sdbp.unstack_variables(Z0)
-	for cvar in coords.cvarsZ:
-		dZ0[[cvar]].to_netcdf( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_{calib[0]}-{calib[1]}.nc" ) )
-##}}}
-
-## global_correction ##{{{
-@log_start_end(logger)
-def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
-	return global_correction_zarr( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
 ##}}}
 
 

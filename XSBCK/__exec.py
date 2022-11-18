@@ -52,7 +52,6 @@ from .__tmp import build_tmp_dir
 
 from .__io import load_data
 from .__io import save_data
-from .__io import save_data_zarr
 from .__correction import build_BC_method
 from .__correction import global_correction
 
@@ -104,7 +103,7 @@ def run_xsbck( kwargs ):##{{{
 		dZ = global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
 		
 		## Save
-		save_data_zarr( dZ , coords , kwargs )
+		save_data( dZ , coords , kwargs )
 		
 	except Exception as e:
 		raise e

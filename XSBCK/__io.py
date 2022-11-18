@@ -301,35 +301,9 @@ class TmpZarr:##{{{
 ##}}}
 
 
-## load_data_nc ##{{{
+## load_data ##{{{
 @log_start_end(logger)
-def load_data_nc( kwargs : dict ):
-	
-	## Read the data
-	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
-	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" )
-	
-	## Identify coordinates
-	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] , kwargs["cvarsZ"] )
-	dX,dY  = coords.delete_mapping(dX,dY)
-	logger.info(coords.summary())
-	
-	## Rename coordinates
-	dX,dY = coords.rename_cvars(dX,dY)
-	
-	## Now define chunk
-	chunk = { c : 5 for c in coords.dimsX }
-	chunk["time"] = -1
-	logger.info( "Chunk:" + ", ".join([f"{key}: {chunk[key]}" for key in chunk]) )
-	dX = dX.chunk(chunk)
-	dY = dY.chunk(chunk)
-	
-	return dX,dY,coords
-##}}}
-
-## load_data_zarr ##{{{
-@log_start_end(logger)
-def load_data_zarr( kwargs : dict ):
+def load_data( kwargs : dict ):
 	
 	## Read the data
 	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
@@ -362,13 +336,6 @@ def load_data_zarr( kwargs : dict ):
 	return zX,zY,coords
 ##}}}
 
-## load_data ##{{{
-@log_start_end(logger)
-def load_data( kwargs : dict ):
-	
-	return load_data_zarr(kwargs)
-##}}}
-
 
 ## build_reference ##{{{
 def build_reference( method : str ):
@@ -383,97 +350,10 @@ def build_reference( method : str ):
 	return ref
 ##}}}
 
-
-## save_data_nc ##{{{
-@log_start_end(logger)
-def save_data_nc( coords : Coordinates , kwargs : dict ):
-	
-	## Read tmp files
-	dZ = {}
-	for cvar in coords.cvarsZ:
-		
-		Z1 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z1_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
-		Z0 = xr.open_mfdataset( os.path.join( kwargs["tmp"] , f"{cvar}_Z0_*.nc" ) , data_vars = "minimal" )[cvar].transpose(*coords.dimsX)
-		Z1.loc[Z0.time,:,:] = Z0
-		dZ[cvar] = Z1
-	
-	dZ = xr.Dataset(dZ)
-	
-	
-	## Now loop on input files to define output files
-	for f in kwargs["input_biased"]:
-		
-		## Load data
-		dX = xr.open_dataset(f)
-		
-		## Find calendar
-		calendar = "gregorian"
-		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
-			calendar = "365_day"
-		if isinstance(dX.time.values[0],cftime.Datetime360Day):
-			calendar = "360_day"
-		
-		## Find the variable
-		for cvarX,_,cvarZ in coords.cvars:
-			if cvarX in dX: break
-		X = dX[cvarX]
-		
-		## Build the output file
-		avar = cvarZ + "Adjust"
-		Z  = dZ[cvarZ].loc[X.time,:,:]
-		oZ = { avar : Z }
-		if coords.mapping is not None:
-			oZ[coords.mapping] = 1
-		odata = xr.Dataset(oZ)
-		
-		## Add global attributes
-		odata.attrs = dX.attrs
-		
-		## Add variables attributes
-		odata[avar].attrs = X.attrs
-		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
-		
-		## Add mapping? attributes
-		if coords.mapping is not None:
-			odata[coords.mapping].attrs = dX[coords.mapping].attrs
-		
-		## Add coords attributes
-		for c in coords.coords:
-			odata[c].attrs = dX[c].attrs
-		
-		## Add BC attributes
-		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
-		odata.attrs["bc_method"] = kwargs["method"]
-		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
-		odata.attrs["bc_window"] = ",".join( [str(x) for x in kwargs["window"]] )
-		odata.attrs["bc_reference"] = build_reference(kwargs["method"])
-		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","xclim","numpy","xarray"],[SBCK,xclim,np,xr]) ] )
-		
-		## The encoding
-		encoding = {"time" : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : "days since " + str(dZ.time.values[0])[:10] } }
-		for c in coords.coords:
-			encoding[c] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape }
-		encoding[avar]  = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
-		if coords.mapping is not None:
-			encoding[coords.mapping] = { "dtype" : "int32" }
-		
-		## ofile
-		ifile  = os.path.basename(f)
-		prefix = f"{avar}_{kwargs['method']}"
-		if cvarX in ifile:
-			ofile = ifile.replace(cvarX,prefix)
-		else:
-			ofile = f"{prefix}_{ifile}"
-		
-		## And save
-		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
-	
-##}}}
-
-## save_data_zarr ##{{{ 
+## save_data ##{{{ 
 
 @log_start_end(logger)
-def save_data_zarr( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
+def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 	
 	## Build mapping between cvarsX and cvarsZ
 	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
@@ -551,10 +431,4 @@ def save_data_zarr( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 ##}}}
 
-## save_data ##{{{
-def save_data( *args , **kwargs ):
-	
-	save_data_zarr(*args,**kwargs)
-	
-##}}}
 
