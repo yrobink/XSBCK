@@ -30,10 +30,10 @@ import datetime as dt
 import numpy  as np
 import xarray as xr
 import cftime
+import dask
 
 import zarr
 import SBCK
-import xclim
 
 from .__release import version
 from .__logs import log_start_end
@@ -408,7 +408,7 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
 		odata.attrs["bc_window"] = ",".join( [str(x) for x in kwargs["window"]] )
 		odata.attrs["bc_reference"] = build_reference(kwargs["method"])
-		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","xclim","numpy","xarray"],[SBCK,xclim,np,xr]) ] )
+		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
 		
 		## The encoding
 		encoding = {"time" : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : "days since " + str(dZ.time.values[0])[:10] } }

@@ -29,9 +29,6 @@ import datetime as dt
 import numpy  as np
 import xarray as xr
 
-from xclim import sdba
-import xclim.sdba.processing as sdbp
-
 import SBCK as bc
 import SBCK.ppp as bcp
 

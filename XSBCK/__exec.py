@@ -27,11 +27,10 @@ import datetime as dt
 import tempfile
 
 import SBCK as bc
-import xclim
 import numpy as np
 import xarray as xr
 import dask
-
+import zarr
 
 #############
 ## Imports ##
@@ -139,7 +138,7 @@ def start_xsbck():##{{{
 	## Package version
 	logger.info( "Packages version:" )
 	logger.info( " * {:{fill}{align}{n}}".format( "XSBCK" , fill = " " , align = "<" , n = 8 ) + f"version {version}" )
-	for name_pkg,pkg in zip(["SBCK","xclim","numpy","xarray","dask"],[bc,xclim,np,xr,dask]):
+	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[bc,np,xr,dask,zarr]):
 		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 8 ) +  f"version {pkg.__version__}" )
 	logger.info(LINE)
 	

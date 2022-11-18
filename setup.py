@@ -28,7 +28,7 @@ exec("".join(lines))
 author           = ", ".join(authors)
 author_email     = ", ".join(authors_email)
 package_dir      = { "XSBCK" : "XSBCK" }
-requires         = [ "numpy" , "scipy" , "xarray" , "netCDF4" , "cftime" , "xclim" , "SBCK(>=0.5.0a19)" , "dask" ]
+requires         = [ "numpy" , "scipy" , "xarray" , "netCDF4" , "cftime" , "SBCK(>=0.5.0a19)" , "dask(>=2022.11.0)" , "zarr" ]
 scripts          = ["scripts/xsbck"]
 keywords         = []
 platforms        = ["linux","macosx"]
