@@ -69,8 +69,10 @@ Input parameters
     Spatial chunk of the dataset. If not given, default value is:
     chunk_lat = int(nlat / sqrt(n_threads))
     chunk_lon = int(nlon / sqrt(n_threads))
---calibration [default= "1976/2005]
+--calibration [default=1976/2005]
     Calibration period, in the form 'year_start/year_end'.
+--start-year [default=First year of the input data]
+    Starting year for the correction.
 --cvarsX
     Model climate variables, in the form var0,var1,var2,...
 --cvarsY

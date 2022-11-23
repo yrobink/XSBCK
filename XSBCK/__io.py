@@ -563,12 +563,21 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 	## Build mapping between cvarsX and cvarsZ
 	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
 	
+	tstart = kwargs["start_year"]
+	
 	for f in kwargs["input_biased"]:
 		
 		logger.info( f" * {os.path.basename(f)}" )
 		
 		## Load data
 		dX = xr.open_dataset(f)
+		
+		## Check year
+		if dX.time.dt.year[-1] < int(tstart):
+			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
+			continue
+		else:
+			otime = dX.time.sel( time = slice(tstart,None) )
 		
 		## Find calendar
 		calendar = "gregorian"
@@ -580,13 +589,15 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		## Find the variable
 		for cvarX,_,cvarZ in coords.cvars:
 			if cvarX in dX: break
-		X = dX[cvarX]
+		X = dX[cvarX].sel( time = otime )
 		
 		## Build the output file
 		avar = cvarZ + "Adjust"
-		Z  = dZ.sel_cvar_along_time( X.time , cvarZ )
+		Z  = dZ.sel_cvar_along_time( otime , cvarZ )
 		odata = { avar : Z }
 		for c in coords.coords:
+			if c == "time":
+				continue
 			odata[c] = dX[c]
 		if coords.mapping is not None:
 			odata[coords.mapping] = 1
@@ -632,7 +643,7 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 			ofile = f"{prefix}_{ifile}"
 		
 		## And save
-		logger.info( f"     => {os.path.join( kwargs['output_dir'] , ofile )}" )
+		logger.info( f"     => {ofile}" )
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 ##}}}
 

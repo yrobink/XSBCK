@@ -223,7 +223,7 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 ##}}}
 
 
-def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
+def yearly_window( tbeg_ , tend_ , wleft , wpred , wright , tleft_ , tright_ ):##{{{
 	"""
 	XSBCK.yearly_window
 	===================
@@ -243,6 +243,10 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 		Lenght of middle / predict window
 	wright:
 		Lenght of right window
+	tleft_:
+		Left bound
+	tright_:
+		Right bound
 	
 	Returns
 	-------
@@ -250,19 +254,22 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 	
 	Examples
 	--------
-	>>> for tf0,tp0,tp1,tf1 in yearly_window( 1951 , 2100 , 5 , 50 , 5 ):
-	>>> 	print( f" *     {rtf0} /         {rtp0} /          {rtp1} /      {rtf1}" )
+	>>> for tf0,tp0,tp1,tf1 in yearly_window( 2006 , 2100 , 5 , 50 , 5 , 1951 , 2100 ):
+	>>> 	pass
 	>>> ## Output:
-	>>> ## 1951 /         1951 /          2000 /      2010
-	>>> ## 1996 /         2001 /          2050 /      2055
-	>>> ## 2041 /         2051 /          2100 /      2100
+	>>> ## Iterate over 5-50-5 window
+	>>> ## * L-bound / Fit-left / Predict-left / Predict-right / Fit-right / R-Bound
+	>>> ## *    1951 /     2001 /         2006 /          2055 /      2060 /    2100
+	>>> ## *    1951 /     2041 /         2056 /          2100 /      2100 /    2100
 	"""
 	
 	logger.info( f"Iterate over {wleft}-{wpred}-{wright} window" )
-	logger.info( " * Fit-left / Predict-left / Predict-right / Fit-right" )
+	logger.info( " * L-bound / Fit-left / Predict-left / Predict-right / Fit-right / R-Bound" )
 	
 	tbeg = int(tbeg_)
 	tend = int(tend_)
+	tleft  = int(tleft_)
+	tright = int(tright_)
 	
 	tp0  = int(tbeg)
 	tp1  = tp0 + wpred - 1
@@ -274,20 +281,20 @@ def yearly_window( tbeg_ , tend_ , wleft , wpred , wright ):##{{{
 		## Work on a copy, original used for iteration
 		rtf0,rtp0,rtp1,rtf1 = tf0,tp0,tp1,tf1
 		
-		## Correction when the left window is lower than tbeg
-		if rtf0 < tbeg:
-			rtf1 = rtf1 + tbeg - rtf0
-			rtf0 = tbeg
+		## Correction when the left window is lower than tleft
+		if rtf0 < tleft:
+			rtf1 = rtf1 + tleft - rtf0
+			rtf0 = tleft
 		
 		## Correction when the right window is upper than tend
-		if rtf1 > tend:
-			rtf1 = tend
-			rtf0 = rtf0 - (tf1 - tend)
-		if rtp1 > tend:
-			rtp1 = tend
+		if rtf1 > tright:
+			rtf1 = tright
+			rtf0 = rtf0 - (tf1 - tright)
+		if rtp1 > tright:
+			rtp1 = tright
 		
 		## The return
-		logger.info( f" *     {rtf0} /         {rtp0} /          {rtp1} /      {rtf1}" )
+		logger.info( f" *    {tleft} /     {rtf0} /         {rtp0} /          {rtp1} /      {rtf1} /    {tright}" )
 		yield [str(x) for x in [rtf0,rtp0,rtp1,rtf1]]
 		
 		## And iteration
@@ -410,11 +417,16 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	## Init time
 	wleft,wpred,wright = kwargs["window"]
-	tbeg = str(coords.time[0].values)[:4]
-	tend = str(coords.time[-1].values)[:4]
+	tleft  = str(coords.time[0].values)[:4]
+	tright = str(coords.time[-1].values)[:4]
+	tbeg = kwargs.get("start_year")
+	if tbeg is None:
+		tbeg = tleft
+		kwargs["start_year"] = tbeg
+	tend = tright
 	
 	## Loop over time for projection period
-	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright ):
+	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright , tleft , tright ):
 		
 		## Build data in projection period
 		X1f = dX.sel_along_time(slice(tf0,tf1)).rename( time = "timeX1f" )
