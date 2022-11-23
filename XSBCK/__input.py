@@ -35,7 +35,7 @@ logger.addHandler(logging.NullHandler())
 ## Functions
 ############
 
-def read_inputs():##{{{
+def read_inputs(*argv):##{{{
 	"""
 	XSBCK.read_inputs
 	=================
@@ -65,7 +65,7 @@ def read_inputs():##{{{
 	parser.add_argument( "--cvarsZ" , default = None )
 	parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
 	
-	kwargs = vars(parser.parse_args())
+	kwargs = vars(parser.parse_args(argv))
 	
 	## Switch tmp folder
 	kwargs["tmp_base"] = kwargs["tmp"]

@@ -115,7 +115,7 @@ def run_xsbck( kwargs ):##{{{
 	logger.info(LINE)
 ##}}}
 
-def start_xsbck():##{{{
+def start_xsbck(*argv):##{{{
 	"""
 	XSBCK.start_xsbck
 	=================
@@ -127,7 +127,7 @@ def start_xsbck():##{{{
 	walltime0 = dt.datetime.utcnow()
 	
 	## Read input
-	kwargs = read_inputs()
+	kwargs = read_inputs(*argv)
 	
 	## Init logs
 	init_logging(kwargs["log"])

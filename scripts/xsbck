@@ -17,6 +17,7 @@
 ## You should have received a copy of the GNU General Public License
 ## along with XSBCK.  If not, see <https://www.gnu.org/licenses/>.
 
+import sys
 from XSBCK import start_xsbck
 
 
@@ -26,5 +27,5 @@ from XSBCK import start_xsbck
 
 if __name__ == "__main__":
 	
-	start_xsbck()
+	start_xsbck(*sys.argv[1:])
 	
