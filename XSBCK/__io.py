@@ -31,6 +31,7 @@ import numpy  as np
 import xarray as xr
 import cftime
 import dask
+import netCDF4
 
 import zarr
 import SBCK
@@ -569,7 +570,11 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		
 		logger.info( f" * {os.path.basename(f)}" )
 		
-		## Load data
+		## Start by read the time units (xarray deletes it)
+		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
+			time_units = ncfile.variables["time"].units
+		
+		## Load data with xarray (easier to load attributes)
 		dX = xr.open_dataset(f)
 		
 		## Check year
@@ -627,10 +632,9 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
 		
 		## The encoding
-		encoding = {"time" : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : "days since " + str(dZ.time.values[0])[:10] } }
-		for c in coords.coords:
-			encoding[c] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape }
-		encoding[avar]  = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+		encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
+		encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
+		encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
 		if coords.mapping is not None:
 			encoding[coords.mapping] = { "dtype" : "int32" }
 		
