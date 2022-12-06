@@ -93,8 +93,13 @@ class Coordinates:##{{{
 		coordsX.sort()
 		coordsY.sort()
 		
+		if "height" in coordsX:
+			del coordsX[coordsX.index("height")]
+		if "height" in coordsY:
+			del coordsY[coordsY.index("height")]
+		
 		if not all( [key in coordsX for key in coordsY] + [key in coordsY for key in coordsX] ):
-			raise Exception( "Coordinates of input are differents: ref : {coordsY}, biased : {coordsX}" )
+			raise Exception( f"Coordinates of input are differents: ref : {coordsY}, biased : {coordsX}" )
 		
 		self.coords = coordsX
 		
@@ -479,8 +484,8 @@ def load_data( kwargs : dict ):
 	"""
 	
 	## Read the data
-	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" )
-	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" )
+	dX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
+	dY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
 	
 	## Identify coordinates
 	coords = Coordinates( dX , dY , kwargs["cvarsX"] , kwargs["cvarsY"] , kwargs["cvarsZ"] )
