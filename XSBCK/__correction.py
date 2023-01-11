@@ -173,6 +173,10 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 	return pipe,pipe_kwargs
 ##}}}
 
+def checkf(X):##{{{
+	return np.any(np.isfinite(X))
+##}}}
+
 ## build_BC_method ##{{{
 @log_start_end(logger)
 def build_BC_method( coords : Coordinates , kwargs : dict ):
@@ -216,8 +220,8 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 	pipe,pipe_kwargs = build_pipe( coords , kwargs )
 	
 	## Global arguments
-	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
-	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs }
+	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : checkf }
+	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : checkf }
 	
 	return bc_n_kwargs,bc_s_kwargs
 ##}}}
@@ -331,12 +335,16 @@ def sbck_ns_ufunc( Y0 , X0 , X1f , X1p , cls , **kwargs ):##{{{
 		Corrected data in projection period
 	"""
 	
-	sbck_cls = cls(**kwargs)
-	sbck_cls.fit( Y0 = Y0 , X0 = X0 , X1 = X1f )
-	Z1p = sbck_cls.predict( X1 = X1p )
-	
-	if X1p.ndim == 1:
-		return Z1p[:,0]
+	try:
+		sbck_cls = cls(**kwargs)
+		sbck_cls.fit( Y0 = Y0 , X0 = X0 , X1 = X1f )
+		Z1p = sbck_cls.predict( X1 = X1p )
+		
+		if X1p.ndim == 1:
+			Z1p = Z1p[:,0]
+	except Exception as e:
+		logger.error( f"Error in sbck_ns_ufunc: {e}" )
+		Z1p = X1p.copy() + np.nan
 	
 	return Z1p
 ##}}}
@@ -364,12 +372,16 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 		Corrected data in calibration period
 	"""
 	
-	sbck_cls = cls(**kwargs)
-	sbck_cls.fit( Y0 = Y0 , X0 = X0 )
-	Z0 = sbck_cls.predict( X0 = X0 )
-	
-	if X0.ndim == 1:
-		return Z0[:,0]
+	try:
+		sbck_cls = cls(**kwargs)
+		sbck_cls.fit( Y0 = Y0 , X0 = X0 )
+		Z0 = sbck_cls.predict( X0 = X0 )
+		
+		if X0.ndim == 1:
+			Z0 = Z0[:,0]
+	except Exception as e:
+		logger.error( f"Error in sbck_s_ufunc: {e}" )
+		Z0 = X0.copy() + np.nan
 	
 	return Z0
 ##}}}

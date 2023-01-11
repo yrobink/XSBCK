@@ -637,9 +637,14 @@ def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
 		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
 		
 		## The encoding
-		encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
-		encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
-		encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+		if False: ## Compression
+			encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
+			encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
+			encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+		else: ## No compression
+			encoding         = { c : { "dtype" : "double" , "zlib" : False } for c in coords.coords }
+			encoding["time"] = { "dtype" : "double"  , "zlib" : False , "calendar" : calendar , "units" : time_units }
+			encoding[avar]   = { "dtype" : "float32" , "zlib" : False }
 		if coords.mapping is not None:
 			encoding[coords.mapping] = { "dtype" : "int32" }
 		
