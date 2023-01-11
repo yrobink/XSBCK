@@ -1,5 +1,5 @@
-# XSBCK
-Executable SBCK
+
+# XSBCK: Executable SBCK
 
 Currently in pre-pre-pre alpha version, so don't use. Ths goal is to have a command like this:
 
@@ -18,5 +18,30 @@ where:
 - `--threads-per-worker` Number of threads per worker
 - `--memory` Memory per worker
 - `--window` The size of moving window. `5,10,5` corresponds to a window of length 5+10+5 years for the fit, and the central 10 years for the predict.
+
+To use it currently, start by read the documentation:
+
+~~~bash
+xsbck --help
+~~~
+
+## License
+
+Copyright(c) 2022, 2023 Yoann Robin
+
+This file is part of XSBCK.
+
+XSBCK is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+XSBCK is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with XSBCK.  If not, see <https://www.gnu.org/licenses/>.
 
 
