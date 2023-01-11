@@ -1,6 +1,6 @@
 
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022, 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -22,6 +22,7 @@
 #############
 
 import sys
+import itertools as itt
 import os
 import gc
 import logging
@@ -37,7 +38,8 @@ import zarr
 import SBCK
 
 from .__release import version
-from .__logs import log_start_end
+from .__logs    import log_start_end
+from .__utils   import SizeOf
 
 
 ##################
@@ -237,19 +239,19 @@ class Coordinates:##{{{
 ##}}}
 
 
-class TmpZarr:##{{{
+class XZarr:##{{{
 	"""
-	XSBCK.TmpZarr
-	=============
+	XSBCK.XZarr
+	===========
 	
-	Class managing a zarr file, to acces with the time axis
+	Class managing a zarr file, to access with the time axis
 	
 	"""
 	
-	def __init__( self , fzarr , dX = None , shape = None , dims = None , coords = None , chunks = None , persist = False , cvars = None ):##{{{
+	def __init__( self , fzarr , dX = None , shape = None , dims = None , coords = None , xchunks = None , persist = False , cvars = None , dtype = "float32" , avail_spatial_mem = None ):##{{{
 		"""
-		XSBCK.TmpZarr.__init__
-		======================
+		XSBCK.XZarr.__init__
+		====================
 		
 		Arguments
 		---------
@@ -270,6 +272,11 @@ class TmpZarr:##{{{
 			If False, the fzarr file is removed when the object is deleted.
 		cvars:
 			List of cvar
+		dtype:
+			The data type, default is float32
+		avail_spatial_mem:
+			Memory limit in octet of a single map (no time and variables). Used
+			to spatially cut the dataset
 		 
 		"""
 		
@@ -278,20 +285,42 @@ class TmpZarr:##{{{
 		self.shape   = None
 		self.dims    = None
 		self.coords  = None
+		self.dtype   = dtype
+		self.avail_spatial_mem = avail_spatial_mem
+		self._fmatch = lambda a,b: [ b.index(x) if x in b else None for x in a ]
 		
 		if dX is not None:
 			self._init_from_dX( dX , cvars )
 		else:
 			self._init_from_args( shape , dims , coords )
 		
+		## Find time chunk
+		time_chunk = 4 * 365 + 1
 		try:
-			is_leap = not ( isinstance(dX.time.values[0],cftime.DatetimeNoLeap) or isinstance(dX.time.values[0],cftime.Datetime360Day) )
+			if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
+				time_chunk = 365
+			if isinstance(dX.time.values[0],cftime.Datetime360Day):
+				time_chunk = 360
 		except:
-			is_leap = 0
+			pass
 		
-		self.chunks  = ( 365 * 4 + is_leap , chunks[0] , chunks[1] , len(self.cvars) )
-		self.dchunks = ( 365 * 4 + is_leap , len(self.coords[1]) , len(self.coords[2]) , 1 )
-		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.dchunks , dtype = "f4" )
+		## Find zchunk
+		if avail_spatial_mem is None:
+			self.zchunks = ( time_chunk , len(self.coords[1]) , len(self.coords[2]) , 1 )
+		else:
+			ny = len(self.coords[1])
+			nx = len(self.coords[2])
+			avail_spatial_numb = int( self.avail_spatial_mem / (np.finfo(self.dtype).bits // 8) )
+			zch_ny = int(ny / np.sqrt(avail_spatial_numb)) + 1
+			zch_nx = int(nx / np.sqrt(avail_spatial_numb)) + 1
+			self.zchunks = ( time_chunk , ny // zch_ny , nx // zch_nx , 1 )
+		
+		## Find xchunk
+		self.xchunks = xchunks
+		if xchunks is None:
+			self.xchunks = -1
+		
+		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.zchunks , dtype = self.dtype )
 		if dX is not None:
 			for icvar,cvar in enumerate(self.cvars):
 				self.data[:,:,:,icvar] = dX[cvar].values
@@ -300,11 +329,29 @@ class TmpZarr:##{{{
 	def _init_from_dX( self , dX , cvars ):##{{{
 		
 		if cvars is None:
-			cvars = [key for key in dX.data_vars]
+			cvars = [key for key in dX.data_vars if dX[key].ndim > 0]
+		
+		ndim = dX[cvars[0]].ndim
+		for cvar in cvars:
+			if not dX[cvar].ndim == ndim:
+				raise Exception
 		
 		self.shape  = dX[cvars[0]].shape  + (len(cvars),)
 		self.dims   = dX[cvars[0]].dims   + ("cvar",)
 		self.coords = [dX[c] for c in self.dims[:-1]] + [cvars,]
+		if not len(self.shape) == ndim + 1:
+			raise Exception
+		if not len(self.dims) == ndim + 1:
+			raise Exception
+		if not len(self.coords) == ndim + 1:
+			raise Exception
+		
+		##
+		dtypes = list(set([str(dX.dtypes[cvar]) for cvar in self.cvars]))
+		if not len(dtypes) == 1:
+			raise Exception
+		self.dtype = dtypes[0]
+		
 	##}}}
 	
 	def _init_from_args( self , shape , dims , coords ):##{{{
@@ -319,7 +366,10 @@ class TmpZarr:##{{{
 	
 	def copy( self , fzarr , value = np.nan ):##{{{
 		
-		copy = TmpZarr( fzarr , shape = self.shape , dims = self.dims , coords = self.coords , chunks = self.chunks , persist = self.persist )
+		copy = XZarr( fzarr , shape = self.shape , dims = self.dims , coords = self.coords ,
+		              xchunks = self.xchunks , persist = self.persist , dtype = self.dtype ,
+		              avail_spatial_mem = self.avail_spatial_mem
+		            )
 		copy.data[:] = value
 		
 		return copy
@@ -333,9 +383,11 @@ class TmpZarr:##{{{
 	def __str__(self):##{{{
 		
 		out = []
-		out.append( "<XSBCK.TmpZarr>" )
+		out.append( "<XSBCK.XZarr>" )
 		out.append( "Dimensions: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.shape)] ) + ")" )
-		out.append( "Chunks: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.chunks)] ) + ")" )
+		out.append( "zchunks: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.zchunks)] ) + "; " +  "x".join( [str(x) for x in self.data.cdata_shape] ) + " )" )
+#		out.append( "xchunks: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.xchunks)] ) + ")" )
+		out.append( "xchunks: " + self.xchunks )
 		out.append( "Coordinates:" )
 		for d,coord in zip(self.dims,self.coords):
 			line = str(coord).split("\n")[-1]
@@ -351,15 +403,26 @@ class TmpZarr:##{{{
 		return self.__str__()
 	##}}}
 	
-	def sel_along_time( self , time ):##{{{
+	def iter_zchunks(self):##{{{
 		"""
-		XSBCK.TmpZarr.sel_along_time
-		============================
+		Return a generator to iterate over spatial zarr chunks
+		"""
+		
+		return itt.product(range(self.data.cdata_shape[1]),range(self.data.cdata_shape[2]))
+	##}}}
+	
+	def sel_along_time( self , time , zc = None ):##{{{
+		"""
+		XSBCK.XZarr.sel_along_time
+		==========================
 		
 		Arguments
 		---------
 		time:
 			The time values to extract
+		zc:
+			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			all spatial values are returned.
 		
 		Returns
 		-------
@@ -367,20 +430,50 @@ class TmpZarr:##{{{
 		 
 		"""
 		
-		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
 		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
 		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
 		
-		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) ) , dims = self.dims , coords = [self.time[idx]] + self.coords[1:] ).chunk( { "time" : -1 , **{ d : c for d,c in zip(self.dims[1:],self.chunks[1:])} } ).astype("float32")
+		xchunk = { "time" : -1 , "cvar" : -1 }
+		if zc is None:
+			sel    = (idx,slice(None),slice(None),slice(None))
+			coords = [self.time[idx]] + self.coords[1:]
+			if self.xchunks == -1:
+				xchunk[self.dims[1]] = -1
+				xchunk[self.dims[2]] = -1
+			else:
+				xchunk[self.dims[1]] = int( self.shape[1] / np.sqrt(self.xchunks) )
+				xchunk[self.dims[2]] = int( self.shape[2] / np.sqrt(self.xchunks) )
+		else:
+			zc_y,zc_x = zc
+			i0y =  zc_y    * self.data.chunks[1]
+			i1y = (zc_y+1) * self.data.chunks[1]
+			i0x =  zc_x    * self.data.chunks[2]
+			i1x = (zc_x+1) * self.data.chunks[2]
+			sel = (idx,slice(i0y,i1y,1),slice(i0x,i1x),slice(None))
+			coords = [self.time[idx]] + [self.coords[1][i0y:i1y]] + [self.coords[2][i0x:i1x]] + [self.coords[3]]
+			if self.xchunks == -1:
+				xchunk[self.dims[1]] = -1
+				xchunk[self.dims[2]] = -1
+			else:
+				xchunk[self.dims[1]] = int( (i1y-i0y+1) / np.sqrt(self.xchunks) )
+				xchunk[self.dims[2]] = int( (i1x-i0x+1) / np.sqrt(self.xchunks) )
+		
+		X = xr.DataArray( self.data.get_orthogonal_selection(sel) ,
+		                  dims = self.dims ,
+		                  coords = coords,
+		                ).chunk(
+		                  xchunk
+#		                  { "time" : -1 , **{ d : c for d,c in zip(self.dims[1:],self.xchunks[1:])} , "cvar" : -1 }
+		                ).astype(self.dtype)
 		
 		return X
 	##}}}
 	
 	def sel_cvar_along_time( self , time , cvar ):##{{{
 		"""
-		XSBCK.TmpZarr.sel_cvar_along_time
-		=================================
+		XSBCK.XZarr.sel_cvar_along_time
+		===============================
 		
 		To select only on cvar
 		
@@ -397,21 +490,25 @@ class TmpZarr:##{{{
 		 
 		"""
 		
-		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
 		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
 		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
 		icvar    = self.cvars.index(cvar)
 		
-		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),icvar) ).squeeze() , dims = self.dims[:-1] , coords = [self.time[idx]] + self.coords[1:-1] ).chunk( { "time" : -1 , **{ d : -1 for d in self.dims[1:-1] } } )
+		X = xr.DataArray( self.data.get_orthogonal_selection( (idx,slice(None),slice(None),icvar) ).squeeze() ,
+		                  dims = self.dims[:-1] ,
+		                  coords = [self.time[idx]] + self.coords[1:-1]
+		                ).chunk(
+		                  { "time" : -1 , **{ d : -1 for d in self.dims[1:-1] } }
+		                )
 		
 		return X
 	##}}}
 	
-	def set_along_time( self , X , time = None ):##{{{
+	def set_along_time( self , X , time = None , zc = None ):##{{{
 		"""
-		XSBCK.TmpZarr.set_along_time
-		============================
+		XSBCK.XZarr.set_along_time
+		==========================
 		
 		To set X at time values in the zarr file
 		
@@ -421,23 +518,35 @@ class TmpZarr:##{{{
 			A data array
 		time:
 			The time values to set
+		zc:
+			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			all spatial values are set.
 		 
 		"""
 		
 		time     = time if time is not None else X.time
-		fmatch   = lambda a, b: [ b.index(x) if x in b else None for x in a ]
 		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
 		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = fmatch( time_fmt , self.time.values.tolist() )
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
 		
-		self.data.set_orthogonal_selection( (idx,slice(None),slice(None),slice(None)) , X.values )
+		if zc is None:
+			sel    = (idx,slice(None),slice(None),slice(None))
+		else:
+			zc_y,zc_x = zc
+			i0y =  zc_y    * self.data.chunks[1]
+			i1y = (zc_y+1) * self.data.chunks[1]
+			i0x =  zc_x    * self.data.chunks[2]
+			i1x = (zc_x+1) * self.data.chunks[2]
+			sel = (idx,slice(i0y,i1y,1),slice(i0x,i1x),slice(None))
+		
+		self.data.set_orthogonal_selection( sel , X.values )
 		
 	##}}}
 	
 	def clean(self):##{{{
 		"""
-		XSBCK.TmpZarr.clean
-		===================
+		XSBCK.XZarr.clean
+		=================
 		Remove the fzarr file
 		 
 		"""
@@ -476,9 +585,9 @@ def load_data( kwargs : dict ):
 	Returns
 	-------
 	zX:
-		TmpZarr file of the biased dataset
+		XZarr file of the biased dataset
 	zY:
-		TmpZarr file of the reference dataset
+		XZarr file of the reference dataset
 	coords:
 		Coordinates class of the data
 	"""
@@ -494,17 +603,33 @@ def load_data( kwargs : dict ):
 	logger.info(coords.summary())
 	
 	## Now find chunks
-	chunks = kwargs["chunks"]
-	if chunks == -1:
-		n_threads = kwargs["n_workers"] * kwargs["threads_per_worker"]
-		ny        = coords.ny
-		nx        = coords.nx
-		chunks    = [ int(ny / np.sqrt(n_threads)) , int(nx / np.sqrt(n_threads)) ]
-		logger.info("Chunks found: {},{}".format(*chunks))
+	xchunks = kwargs["chunks"]
+	if xchunks == -1:
+		xchunks = kwargs["n_workers"] * kwargs["threads_per_worker"]
+		logger.info(f"xchunks found: {xchunks}")
 	
-	## Init TmpZarr
-	zX = TmpZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , chunks = chunks , cvars = coords.cvarsZ )
-	zY = TmpZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , chunks = chunks , cvars = coords.cvarsZ )
+	## Find spatial memory available
+	total_memory      = kwargs["total_memory"].o
+	max_mem_per_chunk = SizeOf( f"{int(0.2*total_memory)}o" )
+	max_time = 365 * max( int(kwargs["calibration"][1]) - int(kwargs["calibration"][0]) + 1 , sum(kwargs['window']) )
+	max_cvar = len(coords.cvarsZ)
+	avail_spatial_mem  = SizeOf( f"{int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // 8) ) )}o" )
+	
+	logger.info( f" * Max mem. per chunk: {max_mem_per_chunk.o}o" )
+	logger.info( f" * Max time step     : {max_time}" )
+	logger.info( f" * Max cvar          : {max_cvar}" )
+	logger.info( f" * Avail Spat. Mem.  : {avail_spatial_mem.o}o" )
+	
+	## Init XZarr
+	zX = XZarr( os.path.join( kwargs["tmp"] , "X.zarr" ) , dX , xchunks = xchunks , cvars = coords.cvarsZ , avail_spatial_mem = avail_spatial_mem.o )
+	zY = XZarr( os.path.join( kwargs["tmp"] , "Y.zarr" ) , dY , xchunks = xchunks , cvars = coords.cvarsZ , avail_spatial_mem = avail_spatial_mem.o )
+	
+	logger.info( f"* About biased data:" )
+	logger.info( f"  => shape  : {str(zX.shape)}" )
+	logger.info( f"  => zchunks: {str(zX.zchunks)}" )
+	logger.info( f"* About reference data:" )
+	logger.info( f"  => shape  : {str(zY.shape)}" )
+	logger.info( f"  => zchunks: {str(zY.zchunks)}" )
 	
 	## Free memory
 	del dX
@@ -545,17 +670,17 @@ def build_reference( method : str ):
 ## save_data ##{{{ 
 
 @log_start_end(logger)
-def save_data( dZ : TmpZarr , coords : Coordinates , kwargs : dict ):
+def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 	"""
 	XSBCK.save_data
 	===============
-	Function used to read the TmpZarr file of the corrected dataset and rewrite
+	Function used to read the XZarr file of the corrected dataset and rewrite
 	in netcdf.
 	
 	Arguments
 	---------
 	dZ:
-		TmpZarr file of the corrected dataset
+		XZarr file of the corrected dataset
 	coords:
 		Coordinates class of the data
 	kwargs:

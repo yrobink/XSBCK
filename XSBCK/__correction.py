@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022, 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -387,20 +387,22 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 ##}}}
 
 
-## global_correction ##{{{
+## spatial_chunked_correction ##{{{
 @log_start_end(logger)
-def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
+def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwargs , kwargs , zc ):
 	"""
-	XSBCK.global_correction
-	=======================
-	Main function for the correction
+	XSBCK.spatial_chunked_correction
+	================================
+	Main function for the correction of each spatial chunked
 	
 	Arguments
 	---------
 	dX:
-		The TmpZarr of the model
+		The XZarr of the model
 	dY:
-		The TmpZarr of the reference
+		The XZarr of the reference
+	dZ:
+		The XZarr of the output
 	coords:
 		Coordinates class of the data
 	bc_n_kwargs:
@@ -409,11 +411,12 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 		dict describing the stationary BC method used
 	kwargs:
 		dict of all parameters of XSBCK
+	zc:
+		The chunk identifier
 	
 	Returns
 	-------
-	dZ:
-		The TmpZarr of the corrected dataset
+	None
 	"""
 	
 	## Parameters
@@ -421,11 +424,8 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	## Extract calibration period
 	calib = kwargs["calibration"]
-	Y0 = dY.sel_along_time(slice(*calib)).rename( time = "timeY0" )
-	X0 = dX.sel_along_time(slice(*calib)).rename( time = "timeX0" )
-	
-	## And init output file
-	dZ = dX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) )
+	Y0 = dY.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeY0" )
+	X0 = dX.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeX0" )
 	
 	## Init time
 	wleft,wpred,wright = kwargs["window"]
@@ -441,8 +441,9 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright , tleft , tright ):
 		
 		## Build data in projection period
-		X1f = dX.sel_along_time(slice(tf0,tf1)).rename( time = "timeX1f" )
+		X1f = dX.sel_along_time( slice(tf0,tf1) , zc = zc ).rename( time = "timeX1f" )
 		X1p = X1f.sel( timeX1f = slice(tp0,tp1) ).rename( timeX1f = "timeX1p" )
+		
 		
 		## dim names
 		input_core_dims  = [("timeY0" ,"cvar"),("timeX0","cvar"),("timeX1f","cvar"),("timeX1p","cvar")]
@@ -464,7 +465,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 		                          keep_attrs       = True ).rename( timeX1p = "time" ) for m in months] , dim = "time"
 		        ).compute().sortby("time").transpose(*dZ.dims)
 		
-		dZ.set_along_time(Z1)
+		dZ.set_along_time( Z1 , zc = zc )
 		
 		## Clean
 		del X1f
@@ -491,13 +492,49 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	                          keep_attrs       = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
 	        ).compute().sortby("time").transpose(*dZ.dims)
 	
-	dZ.set_along_time(Z0)
+	dZ.set_along_time( Z0 , zc = zc )
 	del X0
 	del Y0
 	del Z0
 	gc.collect()
+##}}}
+
+## global_correction ##{{{
+@log_start_end(logger)
+def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
+	"""
+	XSBCK.global_correction
+	================================
+	Main function for the correction, just a loop on spatial chunk
+	
+	Arguments
+	---------
+	dX:
+		The XZarr of the model
+	dY:
+		The XZarr of the reference
+	coords:
+		Coordinates class of the data
+	bc_n_kwargs:
+		dict describing the non-stationary BC method used
+	bc_s_kwargs:
+		dict describing the stationary BC method used
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	dZ:
+		The XZarr of the corrected dataset
+	"""
+	
+	## And init output file
+	dZ = dX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) )
+	
+	for zc in dX.iter_zchunks():
+		logger.info( f"zchunks {str(zc)}" )
+		spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwargs , kwargs , zc )
 	
 	return dZ
 ##}}}
-
 

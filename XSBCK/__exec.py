@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022, 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -82,13 +82,14 @@ def run_xsbck( kwargs ):##{{{
 	
 	logger.info( "XSBCK:start" )
 	
+	
 	## Init the distributed client
 	if not kwargs["disable_dask"]:
 		dask.config.set( temporary_directory = kwargs["tmp_dask"] )
 #		dask.config.set( **{ "temporary_directory" : kwargs["tmp_dask"] , 'array.slicing.split_large_chunks' : False } )
 		kwargs_client = { "n_workers"          : kwargs["n_workers"] ,
 		                  "threads_per_worker" : kwargs["threads_per_worker"] ,
-		                  "memory_limit"       : kwargs["memory"] }
+		                  "memory_limit"       : f"{int(kwargs['memory_per_worker'].B)}B" }
 		wclient = dask.distributed.Client(**kwargs_client)
 	
 	try:

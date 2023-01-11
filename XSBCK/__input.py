@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022, 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -24,8 +24,10 @@ import os
 import logging
 import argparse
 import tempfile
+import psutil
 
 from .__logs import log_start_end
+from .__utils import SizeOf
 
 ## Init logging
 logger = logging.getLogger(__name__)
@@ -54,7 +56,8 @@ def read_inputs(*argv):##{{{
 	parser.add_argument( "--method" , "-m" )
 	parser.add_argument( "--n-workers"          , default = 1 , type = int )
 	parser.add_argument( "--threads-per-worker" , default = 1 , type = int )
-	parser.add_argument( "--memory"      , default = "auto" )
+	parser.add_argument( "--memory-per-worker"  , default = "auto" )
+	parser.add_argument( "--total-memory"       , default = "auto" )
 	parser.add_argument( "--tmp"         , default = tempfile.gettempdir() )
 	parser.add_argument( "--window"      , default = "5,10,5" )
 	parser.add_argument( "--chunks"      , default = None )
@@ -108,6 +111,20 @@ def check_inputs( kwargs : dict ):
 			raise Exception("Output directory must be given!")
 		if not os.path.isdir(kwargs["output_dir"]):
 			raise Exception( f"Output directory {kwargs['output_dir']} is not a path!" )
+		
+		## Check and set the memory
+		if kwargs["memory_per_worker"] == "auto":
+			if kwargs["total_memory"] == "auto":
+				kwargs["total_memory"] = SizeOf( f"{int( 0.8 * psutil.virtual_memory().total)}B" )
+			else:
+				kwargs["total_memory"] = SizeOf(kwargs["total_memory"])
+			kwargs["memory_per_worker"] = SizeOf( f"{int(kwargs['total_memory'].B / kwargs['n_workers'])}B" )
+		else:
+			kwargs["memory_per_worker"] = SizeOf(kwargs["memory_per_worker"])
+			kwargs["total_memory"]      = SizeOf( f"{int(kwargs['memory_per_worker'].B * kwargs['n_workers'])}B" )
+		
+		logger.info( f" * memory_per_worker: {round(kwargs['memory_per_worker'].Go,2)}Go" )
+		logger.info( f" * total_memory     : {round(kwargs['total_memory'].Go,2)}Go" )
 		
 		## Test if the method is given
 		m = kwargs["method"]

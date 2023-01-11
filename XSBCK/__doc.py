@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022, 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -41,9 +41,10 @@ XSBCK ({})
 
 Input parameters
 ----------------
---log Nothing, 'debug', 'info', 'warning', 'error' or 'critical'
+--log [loglevel,logfile]
     Set the log level, default is 'warning'. If '--log' is passed without
-    arguments, 'debug' is used.
+    arguments, 'debug' is used. The default output is the console, and the
+    second argument is a file to redirect the logs.
 --help
     Ask to see the documentation
 --input-reference, -iref, -iY
@@ -58,8 +59,11 @@ Input parameters
     CPU numbers
 --threads-per-worker [int]
     Threads numbers per CPU
---memory
-    Memory per worker
+--memory-per-worker
+    Memory per worker, default is 'auto'
+--total-memory
+    Total available memory, used if '--memory-per-worker' is 'auto' and
+    '--total-memory' is not 'auto'
 --tmp [str, default is tempfile.gettempdir()]
     Base path to build a random temporary folder.
 --window [w_left,w_predict,w_right, default=5,10,5]
