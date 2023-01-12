@@ -122,7 +122,7 @@ class SizeOf:##{{{
 		if self.scale.lower() == "g":
 			return 3
 		if self.scale.lower() == "t":
-			return 3
+			return 4
 		return 0
 	
 	##}}}
