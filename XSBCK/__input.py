@@ -187,7 +187,8 @@ def check_inputs( kwargs : dict ):
 		
 	## All exceptions
 	except Exception as e:
-		logger.error( f"Error: {e}" )
+		if not kwargs["help"]:
+			logger.error( f"Error: {e}" )
 		abort = True
 	
 	## And return
