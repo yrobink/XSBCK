@@ -57,6 +57,7 @@ def read_inputs(*argv):##{{{
 	parser.add_argument( "--n-workers"          , default = 1 , type = int )
 	parser.add_argument( "--threads-per-worker" , default = 1 , type = int )
 	parser.add_argument( "--memory-per-worker"  , default = "auto" )
+	parser.add_argument( "--frac-memory-per-array"  , default = 0.2 , type = float )
 	parser.add_argument( "--total-memory"       , default = "auto" )
 	parser.add_argument( "--tmp"         , default = tempfile.gettempdir() )
 	parser.add_argument( "--window"      , default = "5,10,5" )

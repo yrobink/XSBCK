@@ -610,8 +610,9 @@ def load_data( kwargs : dict ):
 		logger.info(f"xchunks found: {xchunks}")
 	
 	## Find spatial memory available
-	total_memory      = kwargs["total_memory"].o
-	max_mem_per_chunk = SizeOf( f"{int(0.2*total_memory)}o" )
+	total_memory       = kwargs["total_memory"].o
+	frac_mem_per_array = kwargs["frac_memory_per_array"]
+	max_mem_per_chunk  = SizeOf( f"{int(frac_mem_per_array * total_memory)}o" )
 	max_time = 365 * max( int(kwargs["calibration"][1]) - int(kwargs["calibration"][0]) + 1 , sum(kwargs['window']) )
 	max_cvar = len(coords.cvarsZ)
 	avail_spatial_mem  = SizeOf( f"{int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // 8) ) )}o" )

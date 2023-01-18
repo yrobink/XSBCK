@@ -61,6 +61,14 @@ Input parameters
     Threads numbers per CPU
 --memory-per-worker
     Memory per worker, default is 'auto'
+--frac-memory-per-array
+    Fraction of the total memory used per array. 4 arrays are stored in the
+    memory:
+     * The calibration period, for reference and biased data,
+     * The projection period, for biased data and corrected data
+    By default, this parameter is 0.2 = 20%, i.e. at most 4*20% = 80% of the
+    memory is used to store data, and 20% is used for intermediate operations.
+    If a memory error occurs, try to decrease this parameter.
 --total-memory
     Total available memory, used if '--memory-per-worker' is 'auto' and
     '--total-memory' is not 'auto'
