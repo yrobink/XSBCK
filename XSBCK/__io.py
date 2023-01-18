@@ -697,6 +697,7 @@ def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
 	
 	tstart = kwargs["start_year"]
+	tend   = kwargs["end_year"]
 	
 	for f in kwargs["input_biased"]:
 		
@@ -714,7 +715,10 @@ def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 		if dX.time.dt.year[-1] < int(tstart):
 			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
 			continue
-		otime = dX.time.sel( time = slice(tstart,None) )
+		if dX.time.dt.year[0] > int(tend):
+			logger.info( f"     => Start year {int(dX.time.dt.year[0])} < end year {tend}, skip." )
+			continue
+		otime = dX.time.sel( time = slice(tstart,tend) )
 		
 		## Find the variable
 		for cvarX,_,cvarZ in coords.cvars:

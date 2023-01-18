@@ -432,10 +432,13 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 	tleft  = str(coords.time[0].values)[:4]
 	tright = str(coords.time[-1].values)[:4]
 	tbeg = kwargs.get("start_year")
+	tend = kwargs.get("end_year")
 	if tbeg is None:
 		tbeg = tleft
 		kwargs["start_year"] = tbeg
-	tend = tright
+	if tend is None:
+		tend = tright
+		kwargs["end_year"] = tend
 	
 	## Loop over time for projection period
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright , tleft , tright ):

@@ -85,6 +85,10 @@ Input parameters
     Calibration period, in the form 'year_start/year_end'.
 --start-year [default=First year of the input data]
     Starting year for the correction.
+--end-year [default=Last year of the input data]
+    End year for the correction. Note that if the window is larger than
+    'end-year - start-year', a larger period is corrected, but just the period
+    between start and end year is saved.
 --cvarsX
     Model climate variables, in the form var0,var1,var2,...
 --cvarsY

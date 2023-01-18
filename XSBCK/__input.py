@@ -68,6 +68,7 @@ def read_inputs(*argv):##{{{
 	parser.add_argument( "--cvarsY" , default = None )
 	parser.add_argument( "--cvarsZ" , default = None )
 	parser.add_argument( "--start-year" , default = None )
+	parser.add_argument( "--end-year"   , default = None )
 	parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
 	
 	kwargs = vars(parser.parse_args(argv))
