@@ -92,7 +92,7 @@ def check_inputs( kwargs : dict ):
 	"""
 	
 	keys_input = ["input_biased","input_reference"]
-	available_methods = ["IdBC","CDFt","R2D2"]
+	available_methods = ["IdBC","CDFt","R2D2","dOTC"]
 	abort = False
 	
 	## Now the big try

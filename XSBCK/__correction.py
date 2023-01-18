@@ -25,6 +25,7 @@ import os
 import gc
 import logging
 import datetime as dt
+import importlib
 
 import numpy  as np
 import xarray as xr
@@ -52,8 +53,6 @@ logger.addHandler(logging.NullHandler())
 ###############
 ## Functions ##
 ###############
-
-## TODO : parameter of the BC method, i.e. col_cond for R2D2
 
 ## build_pipe ##{{{
 @log_start_end(logger)
@@ -214,6 +213,9 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 	if "CDFt" in kwargs["method"]:
 		bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
 		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
+	if "dOTC" in kwargs["method"]:
+		bc_method_n_kwargs = { "bc_method" : bc.dOTC , "bc_method_kwargs" : {} }
+		bc_method_s_kwargs = { "bc_method" : bc.OTC  , "bc_method_kwargs" : {} }
 	if "R2D2" in kwargs["method"]:
 		col_cond   = [0]
 		if "col_cond" in dkwd:
