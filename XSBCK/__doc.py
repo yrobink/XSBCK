@@ -54,7 +54,9 @@ Input parameters
 --output-dir, -odir, -oZ
     A path to save the corrected data. The name of input-biased is used.
 --method
-    Bias correction method
+    Bias correction method. Arguments can be passed in []. Currently, for
+    R2D2 you can set the conditionning columns with, e.g.
+    `R2D2[col_cond=tas+tasmin+tasmax]`
 --n-workers [int]
     CPU numbers
 --threads-per-worker [int]
@@ -105,7 +107,7 @@ Input parameters
 Examples
 --------
 xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ/\\
-   --method R2D2-L-NV-2L\\
+   --method R2D2-L-NV-2L[col_cond=tas]\\
    --n-workers 5 --threads-per-worker 2\\
    --memory 2GB\\
    --window 5,50,5\\

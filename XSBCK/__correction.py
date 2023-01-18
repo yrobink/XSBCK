@@ -200,7 +200,12 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 		dict describing the stationary BC method used
 	"""
 	
-	bc_method        = bcp.PrePostProcessing
+	bc_method = bcp.PrePostProcessing
+	
+	## Find method kwargs
+	dkwd = {}
+	if kwargs.get("method_kwargs") is not None:
+		dkwd = { k : v for (k,v) in [ kv.split("=") for kv in kwargs["method_kwargs"].split(",")] }
 	
 	## The method
 	if "IdBC" in kwargs["method"]:
@@ -211,10 +216,13 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
 	if "R2D2" in kwargs["method"]:
 		col_cond   = [0]
+		if "col_cond" in dkwd:
+			col_cond = [coords.cvarsZ.index(cvar) for cvar in dkwd["col_cond"].split("+")]
 		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
 		lag_search = 2 * lag_keep
-		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.CDFt } }
-		bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { "col_cond" : col_cond , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True , "bc_method" : bc.QM   } }
+		bcmkwargs  = { "col_cond" : [0] , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True }
+		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.CDFt } }
+		bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.QM   } }
 	
 	## The pipe
 	pipe,pipe_kwargs = build_pipe( coords , kwargs )

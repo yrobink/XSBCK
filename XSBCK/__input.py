@@ -129,7 +129,12 @@ def check_inputs( kwargs : dict ):
 		logger.info( f" * total_memory     : {round(kwargs['total_memory'].Go,2)}Go" )
 		
 		## Test if the method is given
+		if '[' in kwargs["method"]:
+			m = kwargs["method"].split("[")[0]
+			kwargs["method_kwargs"] = kwargs["method"].split("[")[1].split("]")[0]
+			kwargs["method"] = m
 		m = kwargs["method"]
+		
 		if m is None:
 			raise Exception( f"The method must be specified with the argument '--method'!" )
 		
