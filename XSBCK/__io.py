@@ -151,6 +151,7 @@ class Coordinates:##{{{
 		self.mapping = None
 		if "grid_mapping" in dX[self.cvarsX[0]].attrs:
 			self.mapping = dX[self.cvarsX[0]].attrs["grid_mapping"]
+		
 	##}}}
 	
 	def delete_mapping( self , *args ):##{{{
@@ -702,6 +703,7 @@ def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 		
 		## Start by read the time units (xarray deletes it)
 		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
+			attrs = { v : {a : ncfile.variables[v].getncattr(a) for a in ncfile.variables[v].ncattrs()} for v in ncfile.variables }
 			time_units = ncfile.variables["time"].units
 		
 		## Load data with xarray (easier to load attributes)
@@ -711,67 +713,48 @@ def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 		if dX.time.dt.year[-1] < int(tstart):
 			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
 			continue
-		else:
-			otime = dX.time.sel( time = slice(tstart,None) )
-		
-		## Find calendar
-		calendar = "gregorian"
-		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
-			calendar = "365_day"
-		if isinstance(dX.time.values[0],cftime.Datetime360Day):
-			calendar = "360_day"
+		otime = dX.time.sel( time = slice(tstart,None) )
 		
 		## Find the variable
 		for cvarX,_,cvarZ in coords.cvars:
 			if cvarX in dX: break
-		X = dX[cvarX].sel( time = otime )
 		
-		## Build the output file
-		avar = cvarZ + "Adjust"
-		Z  = dZ.sel_cvar_along_time( otime , cvarZ )
-		odata = { avar : Z }
-		for c in coords.coords:
-			if c == "time":
-				continue
-			odata[c] = dX[c]
-		if coords.mapping is not None:
-			odata[coords.mapping] = 1
-		odata = xr.Dataset(odata)
-		
-		## Add global attributes
-		odata.attrs = dX.attrs
+		## Build output
+		avar  = cvarZ + "Adjust"
+		odata = dX.sel( time = otime ).rename( { cvarX : avar } )
+		odata[avar] = dZ.sel_cvar_along_time( otime , cvarZ )
 		
 		## Add variables attributes
-		odata[avar].attrs = X.attrs
+		for v in attrs:
+			if v == cvarX:
+				odata[avar].attrs = attrs[v]
+			else:
+				odata[v].attrs = attrs[v]
+			if v == "time":
+				for k in ["units","calendar"]:
+					if k in odata[v].attrs:
+						del odata[v].attrs[k]
 		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
-		
-		## Add mapping? attributes
-		if coords.mapping is not None:
-			odata[coords.mapping].attrs = dX[coords.mapping].attrs
-		
-		## Add coords attributes
-		for c in coords.coords:
-			odata[c].attrs = dX[c].attrs
 		
 		## Add BC attributes
 		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
-		odata.attrs["bc_method"] = kwargs["method"]
+		odata.attrs["bc_method"]        = kwargs["method"]
 		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
-		odata.attrs["bc_window"] = ",".join( [str(x) for x in kwargs["window"]] )
-		odata.attrs["bc_reference"] = build_reference(kwargs["method"])
+		odata.attrs["bc_window"]        = ",".join( [str(x) for x in kwargs["window"]] )
+		odata.attrs["bc_reference"]     = build_reference(kwargs["method"])
 		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
 		
 		## The encoding
-		if False: ## Compression
-			encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
-			encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
-			encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
-		else: ## No compression
-			encoding         = { c : { "dtype" : "double" , "zlib" : False } for c in coords.coords }
-			encoding["time"] = { "dtype" : "double"  , "zlib" : False , "calendar" : calendar , "units" : time_units }
-			encoding[avar]   = { "dtype" : "float32" , "zlib" : False }
-		if coords.mapping is not None:
-			encoding[coords.mapping] = { "dtype" : "int32" }
+		encoding = {}
+		for key in odata.variables:
+			if key == "time":
+				encoding[key] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : attrs["time"]["calendar"] , "units" : attrs["time"]["units"] }
+			elif key == "time_bnds":
+				encoding[key] = { "dtype" : "double" }
+			elif key == avar:
+				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[key].shape[1:] }
+			else:
+				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[key].shape }
 		
 		## ofile
 		ifile  = os.path.basename(f)
@@ -786,4 +769,123 @@ def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
 		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
 ##}}}
 
+
+## save_data_save ##{{{ 
+
+#@log_start_end(logger)
+#def save_data_save( dZ : XZarr , coords : Coordinates , kwargs : dict ):
+#	"""
+#	XSBCK.save_data_save
+#	====================
+#	Function used to read the XZarr file of the corrected dataset and rewrite
+#	in netcdf.
+#	
+#	Arguments
+#	---------
+#	dZ:
+#		XZarr file of the corrected dataset
+#	coords:
+#		Coordinates class of the data
+#	kwargs:
+#		dict of all parameters of XSBCK
+#	
+#	Returns
+#	-------
+#	None
+#	"""
+#	
+#	## Build mapping between cvarsX and cvarsZ
+#	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
+#	
+#	tstart = kwargs["start_year"]
+#	
+#	for f in kwargs["input_biased"]:
+#		
+#		logger.info( f" * {os.path.basename(f)}" )
+#		
+#		## Start by read the time units (xarray deletes it)
+#		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
+#			time_units = ncfile.variables["time"].units
+#		
+#		## Load data with xarray (easier to load attributes)
+#		dX = xr.open_dataset(f)
+#		
+#		## Check year
+#		if dX.time.dt.year[-1] < int(tstart):
+#			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
+#			continue
+#		otime = dX.time.sel( time = slice(tstart,None) )
+#		
+#		## Find calendar
+#		calendar = "gregorian"
+#		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
+#			calendar = "365_day"
+#		if isinstance(dX.time.values[0],cftime.Datetime360Day):
+#			calendar = "360_day"
+#		
+#		## Find the variable
+#		for cvarX,_,cvarZ in coords.cvars:
+#			if cvarX in dX: break
+#		X = dX[cvarX].sel( time = otime )
+#		logger.info( f"ATTRS: {X.attrs}" )
+#		
+#		## Build the output file
+#		avar = cvarZ + "Adjust"
+#		Z  = dZ.sel_cvar_along_time( otime , cvarZ )
+#		odata = { avar : Z }
+#		for c in coords.coords:
+#			if c == "time":
+#				continue
+#			odata[c] = dX[c]
+#		if coords.mapping is not None:
+#			odata[coords.mapping] = 1
+#		odata = xr.Dataset(odata)
+#		
+#		## Add global attributes
+#		odata.attrs = dX.attrs
+#		
+#		## Add variables attributes
+#		odata[avar].attrs = X.attrs
+#		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
+#		
+#		## Add mapping? attributes
+#		if coords.mapping is not None:
+#			odata[coords.mapping].attrs = dX[coords.mapping].attrs
+#		
+#		## Add coords attributes
+#		for c in coords.coords:
+#			odata[c].attrs = dX[c].attrs
+#		
+#		## Add BC attributes
+#		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
+#		odata.attrs["bc_method"]        = kwargs["method"]
+#		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
+#		odata.attrs["bc_window"]        = ",".join( [str(x) for x in kwargs["window"]] )
+#		odata.attrs["bc_reference"]     = build_reference(kwargs["method"])
+#		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
+#		
+#		## The encoding
+#		if False: ## Compression
+#			encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
+#			encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
+#			encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
+#		else: ## No compression
+#			encoding         = { c : { "dtype" : "double" , "zlib" : False } for c in coords.coords }
+#			encoding["time"] = { "dtype" : "double"  , "zlib" : False , "calendar" : calendar , "units" : time_units }
+#			encoding[avar]   = { "dtype" : "float32" , "zlib" : False }
+#		if coords.mapping is not None:
+#			encoding[coords.mapping] = { "dtype" : "int32" }
+#		
+#		## ofile
+#		ifile  = os.path.basename(f)
+#		prefix = f"{avar}_{kwargs['method']}"
+#		if cvarX in ifile:
+#			ofile = ifile.replace(cvarX,prefix)
+#		else:
+#			ofile = f"{prefix}_{ifile}"
+#		
+#		## And save
+#		logger.info( f"     => {ofile}" )
+#		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
+##}}}
 
