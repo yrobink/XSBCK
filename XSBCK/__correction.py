@@ -169,6 +169,10 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 			pipe.append(cls)
 			pipe_kwargs.append(pkwargs)
 	
+	logger.info( "PPP found:" )
+	for p in pipe:
+		logger.info( f" * {str(p)}" )
+	
 	return pipe,pipe_kwargs
 ##}}}
 
