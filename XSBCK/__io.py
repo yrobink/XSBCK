@@ -323,6 +323,8 @@ class XZarr:##{{{
 		
 		self.data = zarr.open( self.fzarr , mode = "a" , shape = self.shape , chunks = self.zchunks , dtype = self.dtype )
 		if dX is not None:
+			cc = { d : zc for d,zc in zip(dX[self.cvars[0]].dims,self.zchunks) }
+			dX = dX.chunk(cc)
 			for icvar,cvar in enumerate(self.cvars):
 				self.data[:,:,:,icvar] = dX[cvar].values
 	##}}}

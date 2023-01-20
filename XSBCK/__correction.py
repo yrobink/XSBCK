@@ -549,7 +549,7 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	dZ = dX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) )
 	
 	for zc in dX.iter_zchunks():
-		logger.info( f"zchunks {str(zc)}" )
+		logger.info( f"zchunks ({zc[0]+1},{zc[1]+1}) / ({dX.data.cdata_shape[1]},{dX.data.cdata_shape[2]})" )
 		spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwargs , kwargs , zc )
 	
 	return dZ
