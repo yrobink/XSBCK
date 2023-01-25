@@ -129,6 +129,7 @@ class SizeOf:##{{{
 	def bits_per_byte(self):
 		return 8
 	
+	@property
 	def bits_per_octet(self):
 		return 8
 	
