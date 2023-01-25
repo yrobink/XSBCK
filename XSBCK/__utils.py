@@ -41,6 +41,17 @@ class SizeOf:##{{{
 	Class to manage units size for memory
 	
 	1o == 1octet == 1Byte == 1B == 8 bits == 8b
+	
+	1kB = 1000^1B
+	1MB = 1000^2B
+	1GB = 1000^3B
+	1TB = 1000^4B
+	
+	1kiB = 1024^1B
+	1MiB = 1024^2B
+	1GiB = 1024^3B
+	1TiB = 1024^4B
+	
 	"""
 	
 	def __init__( self , s ):##{{{
@@ -78,9 +89,9 @@ class SizeOf:##{{{
 		
 		## Check value
 		try:
-			if 10 * int(value) == int(10*float(value)):
+			try:
 				value = int(value)
-			else:
+			except:
 				value = float(value)
 		except:
 			raise Exception(f"Value error:{value}")
@@ -90,7 +101,7 @@ class SizeOf:##{{{
 		
 		self.bits = self.value * self.base**self.iscale
 		if not self.unit == "b":
-			self.bits = self.bits * 8
+			self.bits = self.bits * self.bits_per_byte
 		if not 10 * int(self.bits) == int(10*self.bits):
 			raise Exception(f"Value is a subdivision of a bit, it is not possible! b = {self.bits}" )
 		self.bits = int(self.bits)
@@ -112,6 +123,17 @@ class SizeOf:##{{{
 #		return "\n".join(out)
 	##}}}
 	
+	## Properties ##{{{
+	
+	@property
+	def bits_per_byte(self):
+		return 8
+	
+	def bits_per_octet(self):
+		return 8
+	
+	##}}}
+	
 	## property.iscale ##{{{
 	@property
 	def iscale(self):
@@ -131,23 +153,23 @@ class SizeOf:##{{{
 	
 	@property
 	def o( self ):
-		return self.bits / 8 / 1000**0
+		return self.bits / self.bits_per_octet / 1000**0
 	
 	@property
 	def ko( self ):
-		return self.bits / 8 / 1000**1
+		return self.bits / self.bits_per_octet / 1000**1
 	
 	@property
 	def Mo( self ):
-		return self.bits / 8 / 1000**2
+		return self.bits / self.bits_per_octet / 1000**2
 	
 	@property
 	def Go( self ):
-		return self.bits / 8 / 1000**3
+		return self.bits / self.bits_per_octet / 1000**3
 	
 	@property
 	def To( self ):
-		return self.bits / 8 / 1000**4
+		return self.bits / self.bits_per_octet / 1000**4
 	
 	##}}}
 	
@@ -155,23 +177,23 @@ class SizeOf:##{{{
 	
 	@property
 	def io( self ):
-		return self.bits / 8 / 1024**0
+		return self.bits / self.bits_per_octet / 1024**0
 	
 	@property
 	def kio( self ):
-		return self.bits / 8 / 1024**1
+		return self.bits / self.bits_per_octet / 1024**1
 	
 	@property
 	def Mio( self ):
-		return self.bits / 8 / 1024**2
+		return self.bits / self.bits_per_octet / 1024**2
 	
 	@property
 	def Gio( self ):
-		return self.bits / 8 / 1024**3
+		return self.bits / self.bits_per_octet / 1024**3
 	
 	@property
 	def Tio( self ):
-		return self.bits / 8 / 1024**4
+		return self.bits / self.bits_per_octet / 1024**4
 	
 	##}}}
 	
@@ -179,23 +201,23 @@ class SizeOf:##{{{
 	
 	@property
 	def B( self ):
-		return self.bits / 8 / 1000**0
+		return self.bits / self.bits_per_byte / 1000**0
 	
 	@property
 	def kB( self ):
-		return self.bits / 8 / 1000**1
+		return self.bits / self.bits_per_byte / 1000**1
 	
 	@property
 	def MB( self ):
-		return self.bits / 8 / 1000**2
+		return self.bits / self.bits_per_byte / 1000**2
 	
 	@property
 	def GB( self ):
-		return self.bits / 8 / 1000**3
+		return self.bits / self.bits_per_byte / 1000**3
 	
 	@property
 	def TB( self ):
-		return self.bits / 8 / 1000**4
+		return self.bits / self.bits_per_byte / 1000**4
 	
 	##}}}
 	
@@ -203,23 +225,23 @@ class SizeOf:##{{{
 	
 	@property
 	def iB( self ):
-		return self.bits / 8 / 1024**0
+		return self.bits / self.bits_per_byte / 1024**0
 	
 	@property
 	def kiB( self ):
-		return self.bits / 8 / 1024**1
+		return self.bits / self.bits_per_byte / 1024**1
 	
 	@property
 	def MiB( self ):
-		return self.bits / 8 / 1024**2
+		return self.bits / self.bits_per_byte / 1024**2
 	
 	@property
 	def GiB( self ):
-		return self.bits / 8 / 1024**3
+		return self.bits / self.bits_per_byte / 1024**3
 	
 	@property
 	def TiB( self ):
-		return self.bits / 8 / 1024**4
+		return self.bits / self.bits_per_byte / 1024**4
 	
 	##}}}
 	
