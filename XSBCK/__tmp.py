@@ -24,7 +24,7 @@ import os
 import random
 import string
 import tempfile
-
+import datetime as dt
 
 ###############
 ## Functions ##
@@ -40,9 +40,11 @@ def build_tmp_dir( kwargs : dict ):##{{{
 	
 	"""
 	
-	kwargs["tmp_gen"]  = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
+	t = str(dt.datetime.utcnow())[:19].replace("-","").replace(":","").replace(" ","-")
+	prefix = f"XSBCK_{t}_"
+	kwargs["tmp_gen"]  = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] , prefix = prefix )
 	kwargs["tmp"] = kwargs["tmp_gen"].name
-	kwargs["tmp_gen_dask"] = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] )
+	kwargs["tmp_gen_dask"] = tempfile.TemporaryDirectory( dir = kwargs["tmp_base"] , prefix = prefix + "dask_" )
 	kwargs["tmp_dask"] = kwargs["tmp_gen_dask"].name
 ##}}}
 
