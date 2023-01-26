@@ -26,6 +26,7 @@ import logging
 import datetime as dt
 import tempfile
 
+import netCDF4
 import SBCK as bc
 import numpy as np
 import xarray as xr
@@ -94,16 +95,16 @@ def run_xsbck( kwargs ):##{{{
 	
 	try:
 		## Load data
-		dX,dY,coords = load_data(kwargs)
+		zX,zY,zZ = load_data(kwargs)
 		
 		## Build the BC method (non-stationary and stationary)
-		bc_n_kwargs,bc_s_kwargs = build_BC_method( coords , kwargs )
+		bc_n_kwargs,bc_s_kwargs = build_BC_method( zZ.cvars , kwargs )
 		
 		## Correction
-		dZ = global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs )
+		global_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs )
 		
 		## Save
-		save_data( dZ , coords , kwargs )
+		save_data( zX , zZ , kwargs )
 		
 	except Exception as e:
 		raise e
@@ -139,7 +140,7 @@ def start_xsbck(*argv):##{{{
 	## Package version
 	logger.info( "Packages version:" )
 	logger.info( " * {:{fill}{align}{n}}".format( "XSBCK" , fill = " " , align = "<" , n = 8 ) + f"version {version}" )
-	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[bc,np,xr,dask,zarr]):
+	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","zarr","netCDF4"],[bc,np,xr,dask,zarr,netCDF4]):
 		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 8 ) +  f"version {pkg.__version__}" )
 	logger.info(LINE)
 	
