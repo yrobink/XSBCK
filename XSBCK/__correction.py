@@ -35,8 +35,8 @@ import SBCK.ppp as bcp
 
 import inspect
 
-from .__io import Coordinates
 from .__logs import log_start_end
+
 
 ##################
 ## Init logging ##
@@ -56,7 +56,7 @@ logger.addHandler(logging.NullHandler())
 
 ## build_pipe ##{{{
 @log_start_end(logger)
-def build_pipe( coords : Coordinates , kwargs : dict ):
+def build_pipe( cvars , kwargs : dict ):
 	"""
 	XSBCK.build_pipe
 	================
@@ -64,8 +64,8 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 	
 	Arguments
 	---------
-	coords:
-		Coordinates class of the data
+	cvars:
+		List of climate variables to be corrected
 	kwargs:
 		dict of all parameters of XSBCK
 	
@@ -87,7 +87,7 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 	pipe_kwargs = []
 	
 	## Identify columns
-	dcols = { cvar : [coords.cvarsZ.index(cvar)] for cvar in coords.cvarsZ }
+	dcols = { cvar : [cvars.index(cvar)] for cvar in cvars }
 	
 	## Explore SBCK.ppp
 	ppp_avail = [clsname for clsname in dir(bcp) if clsname.startswith("PPP") ]
@@ -146,7 +146,7 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 			pkwargs = insp.kwonlydefaults
 			
 			## Special case, the cols parameter
-			if "cols" in pkwargs and cvar in coords.cvarsZ:
+			if "cols" in pkwargs and cvar in cvars:
 				pkwargs["cols"] = dcols[cvar]
 			
 			## And others parameters
@@ -158,7 +158,7 @@ def build_pipe( coords : Coordinates , kwargs : dict ):
 					pkwargs[key] = val
 					
 					## Special case, val is a list (as sum) of cvar
-					if len(set(val.split("+")) & set(coords.cvarsZ)) > 0:
+					if len(set(val.split("+")) & set(cvars)) > 0:
 						pkwargs[key] = []
 						for v in val.split("+"):
 							if not v in dcols:
@@ -182,7 +182,7 @@ def checkf(X):##{{{
 
 ## build_BC_method ##{{{
 @log_start_end(logger)
-def build_BC_method( coords : Coordinates , kwargs : dict ):
+def build_BC_method( cvars , kwargs : dict ):
 	"""
 	XSBCK.build_BC_method
 	=====================
@@ -190,8 +190,8 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 	
 	Arguments
 	---------
-	coords:
-		Coordinates class of the data
+	cvars:
+		List of climate variables to be corrected
 	kwargs:
 		dict of all parameters of XSBCK
 	
@@ -223,7 +223,7 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 	if "R2D2" in kwargs["method"]:
 		col_cond   = [0]
 		if "col_cond" in dkwd:
-			col_cond = [coords.cvarsZ.index(cvar) for cvar in dkwd["col_cond"].split("+")]
+			col_cond = [cvars.index(cvar) for cvar in dkwd["col_cond"].split("+")]
 		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
 		lag_search = 2 * lag_keep
 		bcmkwargs  = { "col_cond" : [0] , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True }
@@ -231,7 +231,7 @@ def build_BC_method( coords : Coordinates , kwargs : dict ):
 		bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.QM   } }
 	
 	## The pipe
-	pipe,pipe_kwargs = build_pipe( coords , kwargs )
+	pipe,pipe_kwargs = build_pipe( cvars , kwargs )
 	
 	## Global arguments
 	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : checkf }
@@ -403,7 +403,7 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 
 ## spatial_chunked_correction ##{{{
 @log_start_end(logger)
-def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwargs , kwargs , zc ):
+def spatial_chunked_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs , zc ):
 	"""
 	XSBCK.spatial_chunked_correction
 	================================
@@ -411,14 +411,12 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 	
 	Arguments
 	---------
-	dX:
+	zX:
 		The XZarr of the model
-	dY:
+	zY:
 		The XZarr of the reference
-	dZ:
+	zZ:
 		The XZarr of the output
-	coords:
-		Coordinates class of the data
 	bc_n_kwargs:
 		dict describing the non-stationary BC method used
 	bc_s_kwargs:
@@ -438,13 +436,13 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 	
 	## Extract calibration period
 	calib = kwargs["calibration"]
-	Y0 = dY.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeY0" )
-	X0 = dX.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeX0" )
+	Y0 = zY.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeY0" )
+	X0 = zX.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeX0" )
 	
 	## Init time
 	wleft,wpred,wright = kwargs["window"]
-	tleft  = str(coords.time[0].values)[:4]
-	tright = str(coords.time[-1].values)[:4]
+	tleft  = str(zX.time[0].values)[:4]
+	tright = str(zX.time[-1].values)[:4]
 	tbeg = kwargs.get("start_year")
 	tend = kwargs.get("end_year")
 	if tbeg is None:
@@ -458,7 +456,7 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright , tleft , tright ):
 		
 		## Build data in projection period
-		X1f = dX.sel_along_time( slice(tf0,tf1) , zc = zc ).rename( time = "timeX1f" )
+		X1f = zX.sel_along_time( slice(tf0,tf1) , zc = zc ).rename( time = "timeX1f" )
 		X1p = X1f.sel( timeX1f = slice(tp0,tp1) ).rename( timeX1f = "timeX1p" )
 		
 		
@@ -480,9 +478,9 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 		                          vectorize        = True ,
 		                          dask             = "parallelized" ,
 		                          keep_attrs       = True ).rename( timeX1p = "time" ) for m in months] , dim = "time"
-		        ).compute().sortby("time").transpose(*dZ.dims)
+		        ).compute().sortby("time").transpose(*zZ.dims)
 		
-		dZ.set_along_time( Z1 , zc = zc )
+		zZ.set_along_time( Z1 , zc = zc )
 		
 		## Clean
 		del X1f
@@ -507,9 +505,9 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 	                          vectorize        = True ,
 	                          dask             = "parallelized" ,
 	                          keep_attrs       = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
-	        ).compute().sortby("time").transpose(*dZ.dims)
+	        ).compute().sortby("time").transpose(*zZ.dims)
 	
-	dZ.set_along_time( Z0 , zc = zc )
+	zZ.set_along_time( Z0 , zc = zc )
 	del X0
 	del Y0
 	del Z0
@@ -518,7 +516,7 @@ def spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwarg
 
 ## global_correction ##{{{
 @log_start_end(logger)
-def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
+def global_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	"""
 	XSBCK.global_correction
 	================================
@@ -526,12 +524,12 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	Arguments
 	---------
-	dX:
+	zX:
 		The XZarr of the model
-	dY:
+	zY:
 		The XZarr of the reference
-	coords:
-		Coordinates class of the data
+	zZ:
+		The XZarr of the output
 	bc_n_kwargs:
 		dict describing the non-stationary BC method used
 	bc_s_kwargs:
@@ -539,19 +537,11 @@ def global_correction( dX , dY , coords , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	kwargs:
 		dict of all parameters of XSBCK
 	
-	Returns
-	-------
-	dZ:
-		The XZarr of the corrected dataset
 	"""
 	
-	## And init output file
-	dZ = dX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) )
+	for zc in zX.iter_zchunks():
+		logger.info( f"zchunks ({zc[0]+1},{zc[1]+1}) / ({zX.data.cdata_shape[1]},{zX.data.cdata_shape[2]})" )
+		spatial_chunked_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs , zc )
 	
-	for zc in dX.iter_zchunks():
-		logger.info( f"zchunks ({zc[0]+1},{zc[1]+1}) / ({dX.data.cdata_shape[1]},{dX.data.cdata_shape[2]})" )
-		spatial_chunked_correction( dX , dY , dZ , coords , bc_n_kwargs , bc_s_kwargs , kwargs , zc )
-	
-	return dZ
 ##}}}
 
