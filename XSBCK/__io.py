@@ -50,11 +50,692 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-#########
-## Dev ##
-#########
+##============================================================================##
+##                                                                            ##
+##  Class to link zarr and xarray                                             ##
+##                                                                            ##
+##============================================================================##
 
-class Coordinates:##{{{
+## TODO time_axis
+class XZarr:##{{{
+	"""
+	XSBCK.XZarr
+	===========
+	
+	Class managing a zarr file, to access with the time axis
+	
+	"""
+	
+	def __init__( self , fzarr , persist = False ):##{{{
+		"""
+		XSBCK.XZarr.__init__
+		====================
+		
+		Arguments
+		---------
+		fzarr:
+			The file used as zarr file
+		dX: [xarray.Dataset]
+			Data to copy in the zarr file. If None, a zero file is init with
+			the shape, dims and coords parameters
+		shape:
+			Only used if dX is None
+		dims:
+			Only used if dX is None
+		coords:
+			Only used if dX is None
+		chunks:
+			The chunk of the data
+		persist:
+			If False, the fzarr file is removed when the object is deleted.
+		cvars:
+			List of cvar
+		dtype:
+			The data type, default is float32
+		avail_spatial_mem:
+			Memory limit in octet of a single map (no time and variables). Used
+			to spatially cut the dataset
+		 
+		"""
+		
+		self._fmatch = lambda a,b: [ b.index(x) if x in b else None for x in a ]
+		
+		self.fzarr   = fzarr
+		self.persist = persist
+		
+		self.zarr_chunks = None
+		self.dask_chunks = None
+		
+		self.shape  = None
+		self.dims   = None
+		self.coords = None
+		
+		self.dtype  = None
+		self.data   = None
+		self.ifiles = None
+	##}}}
+	
+	## @staticmethod.from_dataset ##{{{
+	
+	@staticmethod
+	def from_dataset( fzarr , xdata , ifiles , xcvars , zcvars , dask_chunks , zarr_chunks , time_axis = "time" , persist = False ):
+		"""
+		@staticmethod
+		XSBCK.XZarr.from_dataset
+		========================
+		
+		Arguments
+		---------
+		fzarr:
+			The file used as zarr file
+		xdata: [xarray.Dataset]
+			Data to copy in the zarr file.
+		ifiles:
+			List of files to read the data. We have:
+				xdata = xr.open_mfdataset(ifiles)
+			But data are read directly from ifiles with the netCDF4 engine
+		xcvars:
+			List of cvar from xdata
+		zcvars:
+			List of cvar in the zarr file, can be used to rename xcvars
+		dask_chunks:
+			The chunk of the data
+		zarr_chunks:
+			The chunk of the data
+		time_axis:
+			Name of the time axis, not really used currently, use 'time'
+		persist:
+			If False, the fzarr file is removed when the object is deleted.
+		 
+		"""
+		
+		## The file
+		xzarr = XZarr( fzarr = fzarr , persist = persist )
+		
+		## Init zarr chunks
+		time_chunk = 4 * 365 + 1
+		try:
+			if isinstance(xdata[time_axis].values[0],cftime.DatetimeNoLeap):
+				time_chunk = 365
+			if isinstance(xdata[time_axis].values[0],cftime.Datetime360Day):
+				time_chunk = 360
+		except:
+			pass
+		zarr_chunks = list(zarr_chunks)
+		zarr_chunks[0] = time_chunk
+		xzarr.zarr_chunks = zarr_chunks
+		
+		## Init dask chunks
+		xzarr.dask_chunks = dask_chunks
+		
+		## Init coordinates
+		xzarr.shape  = xdata[xcvars[0]].shape  + (len(xcvars),)
+		xzarr.dims   = xdata[xcvars[0]].dims   + ("cvar",)
+		xzarr.coords = [xdata[c] for c in xzarr.dims[:-1]] + [zcvars,]
+		
+		## And now build the zarr file
+		xzarr.dtype = xdata[xcvars[0]].dtype
+		xzarr.data  = zarr.open( xzarr.fzarr , mode = "w" , shape = xzarr.shape , chunks = xzarr.zarr_chunks , dtype = xzarr.dtype )
+		
+		## And copy netcdf file to zarr file
+		xzarr.ifiles = ifiles
+		for ifile in ifiles:
+			with netCDF4.Dataset( ifile , "r" ) as ncfile:
+				
+				## Find the cvar
+				for icvar,xcvar,zcvar in zip(range(len(zcvars)),xcvars,zcvars):
+					if xcvar in ncfile.variables:
+						break
+				
+				## Time idx
+				time     = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				time_fmt = xzarr.time.sel( time = time ).values.tolist()
+				if not type(time_fmt) is list:
+					time_fmt = [time_fmt]
+				idx      = xzarr._fmatch( time_fmt , xzarr.time.values.tolist() )
+				
+				## Now loop on zchunks
+				for zc in xzarr.iter_zchunks():
+					
+					zc_y,zc_x = zc
+					i0y =  zc_y    * xzarr.data.chunks[1]
+					i1y = (zc_y+1) * xzarr.data.chunks[1]
+					i0x =  zc_x    * xzarr.data.chunks[2]
+					i1x = (zc_x+1) * xzarr.data.chunks[2]
+					
+					## And loop on time chunk to limit memory used
+					for it in range(0,len(idx),time_chunk):
+						sel = (idx[it:(it+time_chunk)],slice(i0y,i1y),slice(i0x,i1x),icvar)
+						xzarr.data.set_orthogonal_selection( sel , ncfile.variables[xcvar][it:(it+time_chunk),i0y:i1y,i0x:i1x] )
+		
+		return xzarr
+	##}}}
+	
+	def copy( self , fzarr , value = np.nan , persist = False ):##{{{
+		
+		## Init the copy
+		copy = XZarr( fzarr = fzarr , persist = persist )
+		
+		## Copy the attributes
+		copy.zarr_chunks = list(self.zarr_chunks)
+		copy.dask_chunks = self.dask_chunks
+		
+		copy.shape  = list(self.shape)
+		copy.dims   = list(self.dims)
+		copy.coords = list(self.coords)
+		
+		copy.dtype  = self.dtype 
+		copy.ifiles = list(self.ifiles)
+		
+		## Init the zarr file
+		copy.data  = zarr.open( fzarr , mode = "w" , shape = copy.shape , chunks = copy.zarr_chunks , dtype = copy.dtype )
+		
+		## And fill it
+		if value is None:
+			copy.data[:] = self.data[:]
+		else:
+			copy.data[:] = value
+		
+		return copy
+		
+	##}}}
+	
+	def __del__( self ):##{{{
+		if not self.persist:
+			self.clean()
+	##}}}
+	
+	def clean(self):##{{{
+		"""
+		XSBCK.XZarr.clean
+		=================
+		Remove the fzarr file
+		 
+		"""
+		try:
+			if os.path.isdir(self.fzarr):
+				for f in os.listdir(self.fzarr):
+					os.remove( os.path.join( self.fzarr , f ) )
+				os.rmdir(self.fzarr)
+		except:
+			pass
+	##}}}
+	
+	def __str__(self):##{{{
+		
+		out = []
+		out.append( "<XSBCK.XZarr>" )
+		out.append( "Dimensions: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.shape)] ) + ")" )
+		out.append( f"zarr_chunks  : {self.zarr_chunks}" )
+		out.append( f"n_dask_chunks: {self.dask_chunks}" )
+		out.append( "Coordinates:" )
+		for d,coord in zip(self.dims,self.coords):
+			line = str(coord).split("\n")[-1]
+			if "*" in line:
+				out.append(line)
+			else:
+				C = " ".join(coord)
+				if len(C) > 24:
+					C = C[:11] + " ... " + C[-11:]
+				out.append( "  * {:{fill}{align}{n}}".format(d,fill=" ",align="<",n=9) + f"({d}) " + C )
+		
+		return "\n".join(out)
+	##}}}
+	
+	def __repr__(self):##{{{
+		return self.__str__()
+	##}}}
+	
+	def iter_zchunks(self):##{{{
+		"""
+		Return a generator to iterate over spatial zarr chunks
+		"""
+		
+		return itt.product(range(self.data.cdata_shape[1]),range(self.data.cdata_shape[2]))
+	##}}}
+	
+	def sel_along_time( self , time , zc = None ):##{{{
+		"""
+		XSBCK.XZarr.sel_along_time
+		==========================
+		
+		Arguments
+		---------
+		time:
+			The time values to extract
+		zc:
+			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			all spatial values are returned.
+		
+		Returns
+		-------
+		A chunked xarray.DataArray
+		 
+		"""
+		
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
+		
+		dask_chunks = { "time" : -1 , "cvar" : -1 }
+		if zc is None:
+			sel    = (idx,slice(None),slice(None),slice(None))
+			coords = [self.time[idx]] + self.coords[1:]
+			if self.dask_chunks == -1:
+				dask_chunks[self.dims[1]] = -1
+				dask_chunks[self.dims[2]] = -1
+			else:
+				dask_chunks[self.dims[1]] = int( self.shape[1] / np.sqrt(self.dask_chunks) )
+				dask_chunks[self.dims[2]] = int( self.shape[2] / np.sqrt(self.dask_chunks) )
+		else:
+			zc_y,zc_x = zc
+			i0y =  zc_y    * self.data.chunks[1]
+			i1y = (zc_y+1) * self.data.chunks[1]
+			i0x =  zc_x    * self.data.chunks[2]
+			i1x = (zc_x+1) * self.data.chunks[2]
+			sel = (idx,slice(i0y,i1y,1),slice(i0x,i1x),slice(None))
+			coords = [self.time[idx]] + [self.coords[1][i0y:i1y]] + [self.coords[2][i0x:i1x]] + [self.coords[3]]
+			if self.dask_chunks == -1:
+				dask_chunks[self.dims[1]] = -1
+				dask_chunks[self.dims[2]] = -1
+			else:
+				dask_chunks[self.dims[1]] = int( (i1y-i0y+1) / np.sqrt(self.dask_chunks) )
+				dask_chunks[self.dims[2]] = int( (i1x-i0x+1) / np.sqrt(self.dask_chunks) )
+		
+		X = xr.DataArray( self.data.get_orthogonal_selection(sel) ,
+		                  dims = self.dims ,
+		                  coords = coords,
+		                ).chunk(
+		                  dask_chunks
+		                ).astype(self.dtype)
+		
+		return X
+	##}}}
+	
+	def sel_cvar_along_time( self , time , cvar , zc = None ):##{{{
+		"""
+		XSBCK.XZarr.sel_cvar_along_time
+		===============================
+		
+		To select only on cvar
+		
+		Arguments
+		---------
+		time:
+			The time values to extract
+		cvar:
+			The climate variable selected
+		zc:
+			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			all spatial values are returned.
+		
+		Returns
+		-------
+		A NOT chunked xarray.DataArray
+		 
+		"""
+		
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
+		icvar    = self.cvars.index(cvar)
+		
+		
+		if zc is None:
+			sel    = (idx,slice(None),slice(None),icvar)
+			coords = [self.time[idx]] + self.coords[1:-1]
+		else:
+			zc_y,zc_x = zc
+			i0y =  zc_y    * self.data.chunks[1]
+			i1y = (zc_y+1) * self.data.chunks[1]
+			i0x =  zc_x    * self.data.chunks[2]
+			i1x = (zc_x+1) * self.data.chunks[2]
+			sel = (idx,slice(i0y,i1y),slice(i0x,i1x),icvar)
+			coords = [self.time[idx]] + [self.coords[1][i0y:i1y]] + [self.coords[2][i0x:i1x]]
+		
+		X = xr.DataArray( self.data.get_orthogonal_selection(sel).squeeze() ,
+		                  dims = self.dims[:-1] ,
+		                  coords = coords
+		                ).chunk(
+		                  { "time" : -1 , **{ d : -1 for d in self.dims[1:-1] } }
+		                )
+		
+		return X
+	##}}}
+	
+	def set_along_time( self , X , time = None , zc = None ):##{{{
+		"""
+		XSBCK.XZarr.set_along_time
+		==========================
+		
+		To set X at time values in the zarr file
+		
+		Arguments
+		---------
+		X:
+			A data array
+		time:
+			The time values to set
+		zc:
+			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			all spatial values are set.
+		 
+		"""
+		
+		time     = time if time is not None else X.time
+		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+		if not type(time_fmt) is list: time_fmt = [time_fmt]
+		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
+		
+		if zc is None:
+			sel    = (idx,slice(None),slice(None),slice(None))
+		else:
+			zc_y,zc_x = zc
+			i0y =  zc_y    * self.data.chunks[1]
+			i1y = (zc_y+1) * self.data.chunks[1]
+			i0x =  zc_x    * self.data.chunks[2]
+			i1x = (zc_x+1) * self.data.chunks[2]
+			sel = (idx,slice(i0y,i1y,1),slice(i0x,i1x),slice(None))
+		
+		self.data.set_orthogonal_selection( sel , X.values )
+		
+	##}}}
+	
+	## Properties {{{
+	@property
+	def time(self):
+		return self.coords[0]
+	
+	@property
+	def cvars(self):
+		return self.coords[-1]
+	##}}}
+	
+##}}}
+
+
+##============================================================================##
+##                                                                            ##
+##  Function to read data and create zarr files                               ##
+##                                                                            ##
+##============================================================================##
+
+## load_data ##{{{
+@log_start_end(logger)
+def load_data( kwargs : dict ):
+	"""
+	XSBCK.load_data
+	===============
+	Function used to read data and copy in a temporary zarr file
+	
+	Arguments
+	---------
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	zX:
+		XZarr file of the biased dataset
+	zY:
+		XZarr file of the reference dataset
+	zZ:
+		XZarr file of the corrected dataset (empty)
+	"""
+	
+	##
+	time_axis = "time" ##kwargs["time_axis"]
+	cvarsX = kwargs["cvarsX"]
+	cvarsY = kwargs["cvarsY"]
+	cvarsZ = kwargs["cvarsZ"]
+	
+	## Open with xarray to decode all variables and time axis
+	xX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
+	xY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
+	
+	## Init cvars
+	logger.info("Check cvars")
+	if (cvarsX is not None and cvarsY is None) or (cvarsY is not None and cvarsX is None):
+		raise Exception( "If cvars is given for the ref (or the biased), cvars must be given for the biased (or the ref)" )
+	check_cvarsXY_is_same = False
+	if cvarsX is None:
+		cvarsX  = [key for key in dX.data_vars]
+		cvarsX.sort()
+		check_cvarsXY_is_same = True
+	else:
+		cvarsX = cvarsX.split(",")
+	if cvarsY is None:
+		cvarsY  = [key for key in dY.data_vars]
+		cvarsY.sort()
+		check_cvarsXY_is_same = True
+	else:
+		cvarsY = cvarsY.split(",")
+	if check_cvarsXY_is_same:
+		if ( not all([cvar in cvarsX for cvar in cvarsY]) ) or (not all([cvar in cvarsY for cvar in cvarsX])):
+			raise Exception( "Variables from ref or biased differs" )
+	if cvarsZ is None:
+		cvarsZ = cvarsX
+	else:
+		cvarsZ = cvarsZ.split(",")
+	
+	logger.info( f" * cvarsX: {cvarsX}" )
+	logger.info( f" * cvarsY: {cvarsY}" )
+	logger.info( f" * cvarsZ: {cvarsZ}" )
+	
+	## Remove of the dataset all variables without time axis
+	keys_to_del = [key for key in xX.data_vars if time_axis not in xX[key].dims]
+	for key in keys_to_del:
+		del xX[key]
+	keys_to_del = [key for key in xY.data_vars if time_axis not in xY[key].dims]
+	for key in keys_to_del:
+		del xY[key]
+	
+	## Find spatial memory available
+	total_memory       = kwargs["total_memory"].o
+	frac_mem_per_array = kwargs["frac_memory_per_array"]
+	max_mem_per_chunk  = SizeOf( f"{int(frac_mem_per_array * total_memory)}o" )
+	max_time           = 365 * max( int(kwargs["calibration"][1]) - int(kwargs["calibration"][0]) + 1 , sum(kwargs['window']) )
+	max_cvar           = len(cvarsZ)
+	avail_spatial_mem  = SizeOf( f"{int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // max_mem_per_chunk.bits_per_octet) ) )}o" )
+	
+	logger.info( "Check memory:" )
+	logger.info( f" * Max mem. per chunk: {max_mem_per_chunk.o}o" )
+	logger.info( f" * Max time step     : {max_time}" )
+	logger.info( f" * Max cvar          : {max_cvar}" )
+	logger.info( f" * Avail Spat. Mem.  : {avail_spatial_mem.o}o" )
+	
+	## Find chunks
+	dask_chunks = kwargs["chunks"]
+	if dask_chunks == -1:
+		dask_chunks = kwargs["n_workers"] * kwargs["threads_per_worker"]
+	
+	ny = xX[xX[cvarsX[0]].dims[1]].size
+	nx = xX[xX[cvarsX[0]].dims[2]].size
+	avail_spatial_numb = int( avail_spatial_mem.o / (np.finfo(xX[cvarsX[0]].dtype).bits // max_mem_per_chunk.bits_per_octet) )
+	zch_ny = max( int(ny / np.sqrt(avail_spatial_numb)) , 1 )
+	zch_nx = max( int(nx / np.sqrt(avail_spatial_numb)) , 1 )
+	zarr_chunks = [ None , ny // zch_ny , nx // zch_nx , 1 ]
+	
+	logger.info( "Chunks found:" )
+	logger.info( f" * dask_chunks: {dask_chunks}" )
+	logger.info( f" * zarr_chunks: {zarr_chunks}" )
+	
+	## Now zarr file
+	logger.info( "Create biased zarr file..." )
+	zX = XZarr.from_dataset( os.path.join( kwargs["tmp"] , "X.zarr" ) , xX , ifiles = kwargs["input_biased"]    , xcvars = cvarsX , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
+	logger.info( "Create reference zarr file..." )
+	zY = XZarr.from_dataset( os.path.join( kwargs["tmp"] , "Y.zarr" ) , xY , ifiles = kwargs["input_reference"] , xcvars = cvarsY , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
+	logger.info( "Create corrected (empty) zarr file..." )
+	zZ = zX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) , np.nan )
+	
+	logger.info( f"About biased data:" )
+	logger.info( f" * shape  : {str(zX.shape)}" )
+	logger.info( f" * zchunks: {str(zX.zarr_chunks)}" )
+	logger.info( f"About reference data:" )
+	logger.info( f" * shape  : {str(zY.shape)}" )
+	logger.info( f" * zchunks: {str(zY.zarr_chunks)}" )
+	
+	## Free memory
+	del xX
+	del xY
+	gc.collect()
+	
+	return zX,zY,zZ
+##}}}
+
+
+##============================================================================##
+##                                                                            ##
+##  Function to save data                                                     ##
+##                                                                            ##
+##============================================================================##
+
+class Coordinates:
+	"""
+	Fake class, to be removed
+	"""
+	pass
+
+## build_reference ##{{{
+def build_reference( method : str ):
+	"""
+	XSBCK.build_reference
+	=====================
+	Function used to build a string of the reference article of the method.
+	
+	Arguments
+	---------
+	method:
+		str
+	
+	Returns
+	-------
+	str
+	"""
+	
+	ref = ""
+	if "CDFt" in method:
+		ref = "Michelangeli, P.-A., Vrac, M., and Loukos, H.: Probabilistic downscaling approaches: Application to wind cumulative distribution functions, Geophys. Res. Lett., 36, L11708, doi:10.1029/2009GL038401, 2009."
+	
+	if "R2D2" in method:
+		ref = "Vrac, M. et S. Thao (2020). “R2 D2 v2.0 : accounting for temporal dependences in multivariate bias correction via analogue rank resampling”. In : Geosci. Model Dev. 13.11, p. 5367-5387. doi :10.5194/gmd-13-5367-2020."
+	
+	return ref
+##}}}
+
+## save_data ##{{{ 
+
+@log_start_end(logger)
+def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
+	"""
+	XSBCK.save_data
+	===============
+	Function used to read the XZarr file of the corrected dataset and rewrite
+	in netcdf.
+	
+	Arguments
+	---------
+	dZ:
+		XZarr file of the corrected dataset
+	coords:
+		Coordinates class of the data
+	kwargs:
+		dict of all parameters of XSBCK
+	
+	Returns
+	-------
+	None
+	"""
+	
+	## Build mapping between cvarsX and cvarsZ
+	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
+	
+	tstart = kwargs["start_year"]
+	tend   = kwargs["end_year"]
+	
+	for f in kwargs["input_biased"]:
+		
+		logger.info( f" * {os.path.basename(f)}" )
+		
+		## Start by read the time units (xarray deletes it)
+		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
+			attrs = { v : {a : ncfile.variables[v].getncattr(a) for a in ncfile.variables[v].ncattrs()} for v in ncfile.variables }
+			time_units = ncfile.variables["time"].units
+		
+		## Load data with xarray (easier to load attributes)
+		dX = xr.open_dataset(f)
+		
+		## Check year
+		if dX.time.dt.year[-1] < int(tstart):
+			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
+			continue
+		if dX.time.dt.year[0] > int(tend):
+			logger.info( f"     => Start year {int(dX.time.dt.year[0])} < end year {tend}, skip." )
+			continue
+		otime = dX.time.sel( time = slice(tstart,tend) )
+		
+		## Find the variable
+		for cvarX,_,cvarZ in coords.cvars:
+			if cvarX in dX: break
+		
+		## Build output
+		avar  = cvarZ + "Adjust"
+		odata = dX.sel( time = otime ).rename( { cvarX : avar } )
+		odata[avar] = dZ.sel_cvar_along_time( otime , cvarZ )
+		
+		## Add variables attributes
+		for v in attrs:
+			if v == cvarX:
+				odata[avar].attrs = attrs[v]
+			else:
+				odata[v].attrs = attrs[v]
+			if v == "time":
+				for k in ["units","calendar"]:
+					if k in odata[v].attrs:
+						del odata[v].attrs[k]
+		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
+		
+		## Add BC attributes
+		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
+		odata.attrs["bc_method"]        = kwargs["method"]
+		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
+		odata.attrs["bc_window"]        = ",".join( [str(x) for x in kwargs["window"]] )
+		odata.attrs["bc_reference"]     = build_reference(kwargs["method"])
+		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
+		
+		## The encoding
+		encoding = {}
+		for key in odata.variables:
+			if key == "time":
+				encoding[key] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : attrs["time"]["calendar"] , "units" : attrs["time"]["units"] }
+			elif key == "time_bnds":
+				encoding[key] = { "dtype" : "double" }
+			elif key == avar:
+				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[key].shape[1:] }
+			else:
+				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[key].shape }
+		
+		## ofile
+		ifile  = os.path.basename(f)
+		prefix = f"{avar}_{kwargs['method']}"
+		if cvarX in ifile:
+			ofile = ifile.replace(cvarX,prefix)
+		else:
+			ofile = f"{prefix}_{ifile}"
+		
+		## And save
+		logger.info( f"     => {ofile}" )
+		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
+##}}}
+
+
+##============================================================================##
+##                                                                            ##
+##  Function and classes to remove                                            ##
+##                                                                            ##
+##============================================================================##
+
+class CoordinatesSAVE:##{{{
 	"""
 	XSBCK.Coordinates
 	=================
@@ -239,8 +920,7 @@ class Coordinates:##{{{
 	
 ##}}}
 
-
-class XZarr:##{{{
+class XZarrSAVE:##{{{
 	"""
 	XSBCK.XZarr
 	===========
@@ -571,10 +1251,9 @@ class XZarr:##{{{
 	
 ##}}}
 
-
-## load_data ##{{{
+## load_data_SAVE ##{{{
 @log_start_end(logger)
-def load_data( kwargs : dict ):
+def load_data_SAVE( kwargs : dict ):
 	"""
 	XSBCK.load_data
 	===============
@@ -640,259 +1319,10 @@ def load_data( kwargs : dict ):
 	del dY
 	gc.collect()
 	
+	
+	
 	return zX,zY,coords
 ##}}}
 
 
-## build_reference ##{{{
-def build_reference( method : str ):
-	"""
-	XSBCK.build_reference
-	=====================
-	Function used to build a string of the reference article of the method.
-	
-	Arguments
-	---------
-	method:
-		str
-	
-	Returns
-	-------
-	str
-	"""
-	
-	ref = ""
-	if "CDFt" in method:
-		ref = "Michelangeli, P.-A., Vrac, M., and Loukos, H.: Probabilistic downscaling approaches: Application to wind cumulative distribution functions, Geophys. Res. Lett., 36, L11708, doi:10.1029/2009GL038401, 2009."
-	
-	if "R2D2" in method:
-		ref = "Vrac, M. et S. Thao (2020). “R2 D2 v2.0 : accounting for temporal dependences in multivariate bias correction via analogue rank resampling”. In : Geosci. Model Dev. 13.11, p. 5367-5387. doi :10.5194/gmd-13-5367-2020."
-	
-	return ref
-##}}}
-
-## save_data ##{{{ 
-
-@log_start_end(logger)
-def save_data( dZ : XZarr , coords : Coordinates , kwargs : dict ):
-	"""
-	XSBCK.save_data
-	===============
-	Function used to read the XZarr file of the corrected dataset and rewrite
-	in netcdf.
-	
-	Arguments
-	---------
-	dZ:
-		XZarr file of the corrected dataset
-	coords:
-		Coordinates class of the data
-	kwargs:
-		dict of all parameters of XSBCK
-	
-	Returns
-	-------
-	None
-	"""
-	
-	## Build mapping between cvarsX and cvarsZ
-	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
-	
-	tstart = kwargs["start_year"]
-	tend   = kwargs["end_year"]
-	
-	for f in kwargs["input_biased"]:
-		
-		logger.info( f" * {os.path.basename(f)}" )
-		
-		## Start by read the time units (xarray deletes it)
-		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
-			attrs = { v : {a : ncfile.variables[v].getncattr(a) for a in ncfile.variables[v].ncattrs()} for v in ncfile.variables }
-			time_units = ncfile.variables["time"].units
-		
-		## Load data with xarray (easier to load attributes)
-		dX = xr.open_dataset(f)
-		
-		## Check year
-		if dX.time.dt.year[-1] < int(tstart):
-			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
-			continue
-		if dX.time.dt.year[0] > int(tend):
-			logger.info( f"     => Start year {int(dX.time.dt.year[0])} < end year {tend}, skip." )
-			continue
-		otime = dX.time.sel( time = slice(tstart,tend) )
-		
-		## Find the variable
-		for cvarX,_,cvarZ in coords.cvars:
-			if cvarX in dX: break
-		
-		## Build output
-		avar  = cvarZ + "Adjust"
-		odata = dX.sel( time = otime ).rename( { cvarX : avar } )
-		odata[avar] = dZ.sel_cvar_along_time( otime , cvarZ )
-		
-		## Add variables attributes
-		for v in attrs:
-			if v == cvarX:
-				odata[avar].attrs = attrs[v]
-			else:
-				odata[v].attrs = attrs[v]
-			if v == "time":
-				for k in ["units","calendar"]:
-					if k in odata[v].attrs:
-						del odata[v].attrs[k]
-		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
-		
-		## Add BC attributes
-		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
-		odata.attrs["bc_method"]        = kwargs["method"]
-		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
-		odata.attrs["bc_window"]        = ",".join( [str(x) for x in kwargs["window"]] )
-		odata.attrs["bc_reference"]     = build_reference(kwargs["method"])
-		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
-		
-		## The encoding
-		encoding = {}
-		for key in odata.variables:
-			if key == "time":
-				encoding[key] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : attrs["time"]["calendar"] , "units" : attrs["time"]["units"] }
-			elif key == "time_bnds":
-				encoding[key] = { "dtype" : "double" }
-			elif key == avar:
-				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[key].shape[1:] }
-			else:
-				encoding[key] = { "dtype" : str(odata[key].dtype) , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[key].shape }
-		
-		## ofile
-		ifile  = os.path.basename(f)
-		prefix = f"{avar}_{kwargs['method']}"
-		if cvarX in ifile:
-			ofile = ifile.replace(cvarX,prefix)
-		else:
-			ofile = f"{prefix}_{ifile}"
-		
-		## And save
-		logger.info( f"     => {ofile}" )
-		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
-##}}}
-
-
-## save_data_save ##{{{ 
-
-#@log_start_end(logger)
-#def save_data_save( dZ : XZarr , coords : Coordinates , kwargs : dict ):
-#	"""
-#	XSBCK.save_data_save
-#	====================
-#	Function used to read the XZarr file of the corrected dataset and rewrite
-#	in netcdf.
-#	
-#	Arguments
-#	---------
-#	dZ:
-#		XZarr file of the corrected dataset
-#	coords:
-#		Coordinates class of the data
-#	kwargs:
-#		dict of all parameters of XSBCK
-#	
-#	Returns
-#	-------
-#	None
-#	"""
-#	
-#	## Build mapping between cvarsX and cvarsZ
-#	mcvars = { x : z for x,z in zip(coords.cvarsX,coords.cvarsZ) }
-#	
-#	tstart = kwargs["start_year"]
-#	
-#	for f in kwargs["input_biased"]:
-#		
-#		logger.info( f" * {os.path.basename(f)}" )
-#		
-#		## Start by read the time units (xarray deletes it)
-#		with netCDF4.Dataset( f , mode = "r" ) as ncfile:
-#			time_units = ncfile.variables["time"].units
-#		
-#		## Load data with xarray (easier to load attributes)
-#		dX = xr.open_dataset(f)
-#		
-#		## Check year
-#		if dX.time.dt.year[-1] < int(tstart):
-#			logger.info( f"     => End year {int(dX.time.dt.year[-1])} < start year {tstart}, skip." )
-#			continue
-#		otime = dX.time.sel( time = slice(tstart,None) )
-#		
-#		## Find calendar
-#		calendar = "gregorian"
-#		if isinstance(dX.time.values[0],cftime.DatetimeNoLeap):
-#			calendar = "365_day"
-#		if isinstance(dX.time.values[0],cftime.Datetime360Day):
-#			calendar = "360_day"
-#		
-#		## Find the variable
-#		for cvarX,_,cvarZ in coords.cvars:
-#			if cvarX in dX: break
-#		X = dX[cvarX].sel( time = otime )
-#		logger.info( f"ATTRS: {X.attrs}" )
-#		
-#		## Build the output file
-#		avar = cvarZ + "Adjust"
-#		Z  = dZ.sel_cvar_along_time( otime , cvarZ )
-#		odata = { avar : Z }
-#		for c in coords.coords:
-#			if c == "time":
-#				continue
-#			odata[c] = dX[c]
-#		if coords.mapping is not None:
-#			odata[coords.mapping] = 1
-#		odata = xr.Dataset(odata)
-#		
-#		## Add global attributes
-#		odata.attrs = dX.attrs
-#		
-#		## Add variables attributes
-#		odata[avar].attrs = X.attrs
-#		odata[avar].attrs["long_name"] = "Bias Adjusted " + odata[avar].attrs["long_name"]
-#		
-#		## Add mapping? attributes
-#		if coords.mapping is not None:
-#			odata[coords.mapping].attrs = dX[coords.mapping].attrs
-#		
-#		## Add coords attributes
-#		for c in coords.coords:
-#			odata[c].attrs = dX[c].attrs
-#		
-#		## Add BC attributes
-#		odata.attrs["bc_creation_date"] = str(dt.datetime.utcnow())[:19] + " (UTC)"
-#		odata.attrs["bc_method"]        = kwargs["method"]
-#		odata.attrs["bc_period_calibration"] = "/".join( [str(x) for x in kwargs["calibration"]] )
-#		odata.attrs["bc_window"]        = ",".join( [str(x) for x in kwargs["window"]] )
-#		odata.attrs["bc_reference"]     = build_reference(kwargs["method"])
-#		odata.attrs["bc_pkgs_versions"] = ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] )
-#		
-#		## The encoding
-#		if False: ## Compression
-#			encoding         = { c : { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : odata[c].shape } for c in coords.coords }
-#			encoding["time"] = { "dtype" : "double" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) , "calendar" : calendar , "units" : time_units }
-#			encoding[avar]   = { "dtype" : "float32" , "zlib" : True , "complevel" : 5 , "chunksizes" : (1,) + odata[avar].shape[1:] }
-#		else: ## No compression
-#			encoding         = { c : { "dtype" : "double" , "zlib" : False } for c in coords.coords }
-#			encoding["time"] = { "dtype" : "double"  , "zlib" : False , "calendar" : calendar , "units" : time_units }
-#			encoding[avar]   = { "dtype" : "float32" , "zlib" : False }
-#		if coords.mapping is not None:
-#			encoding[coords.mapping] = { "dtype" : "int32" }
-#		
-#		## ofile
-#		ifile  = os.path.basename(f)
-#		prefix = f"{avar}_{kwargs['method']}"
-#		if cvarX in ifile:
-#			ofile = ifile.replace(cvarX,prefix)
-#		else:
-#			ofile = f"{prefix}_{ifile}"
-#		
-#		## And save
-#		logger.info( f"     => {ofile}" )
-#		odata.to_netcdf( os.path.join( kwargs["output_dir"] , ofile ) , encoding = encoding )
-##}}}
 
