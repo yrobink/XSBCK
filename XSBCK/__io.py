@@ -32,6 +32,7 @@ import numpy  as np
 import xarray as xr
 import cftime
 import dask
+import distributed
 import netCDF4
 
 import zarr
@@ -721,7 +722,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				oncfile.setncattr( "bc_period_calibration" , "/".join( [str(x) for x in kwargs["calibration"]] ) )
 				oncfile.setncattr( "bc_window"        , ",".join( [str(x) for x in kwargs["window"]] ) )
 				oncfile.setncattr( "bc_reference"     , build_reference(kwargs["method"]) )
-				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr","netCDF4"],[SBCK,np,xr,dask,zarr,netCDF4]) ] ) )
+				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","distributed","zarr","netCDF4"],[SBCK,np,xr,dask,distributed,zarr,netCDF4]) ] ) )
 				
 				## Start with dimensions
 				dims   = [d for d in incfile.dimensions if not d == time_axis ]

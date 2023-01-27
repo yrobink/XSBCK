@@ -31,6 +31,7 @@ import SBCK as bc
 import numpy as np
 import xarray as xr
 import dask
+import distributed
 import zarr
 
 #############
@@ -91,7 +92,7 @@ def run_xsbck( kwargs ):##{{{
 		kwargs_client = { "n_workers"          : kwargs["n_workers"] ,
 		                  "threads_per_worker" : kwargs["threads_per_worker"] ,
 		                  "memory_limit"       : f"{int(kwargs['memory_per_worker'].B)}B" }
-		wclient = dask.distributed.Client(**kwargs_client)
+		wclient = distributed.Client(**kwargs_client)
 	
 	try:
 		## Load data
@@ -140,7 +141,7 @@ def start_xsbck(*argv):##{{{
 	## Package version
 	logger.info( "Packages version:" )
 	logger.info( " * {:{fill}{align}{n}}".format( "XSBCK" , fill = " " , align = "<" , n = 8 ) + f"version {version}" )
-	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","zarr","netCDF4"],[bc,np,xr,dask,zarr,netCDF4]):
+	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","distributed","zarr","netCDF4"],[bc,np,xr,dask,distributed,zarr,netCDF4]):
 		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 8 ) +  f"version {pkg.__version__}" )
 	logger.info(LINE)
 	
