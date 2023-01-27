@@ -57,6 +57,7 @@ logger.addHandler(logging.NullHandler())
 ##============================================================================##
 
 ## TODO time_axis
+## TODO documentation
 class XZarr:##{{{
 	"""
 	XSBCK.XZarr
@@ -172,6 +173,17 @@ class XZarr:##{{{
 		xzarr.shape  = xdata[xcvars[0]].shape  + (len(xcvars),)
 		xzarr.dims   = xdata[xcvars[0]].dims   + ("cvar",)
 		xzarr.coords = [xdata[c] for c in xzarr.dims[:-1]] + [zcvars,]
+		xztime = xzarr.coords[0]
+		if isinstance( xztime[0].values , np.datetime64 ):
+			t0 = str(xztime[0].values)
+			year,month,day = [int(s) for s in t0[:10].split("-")]
+			h,m,sms        = t0[11:].split(":")
+			h = int(h)
+			m = int(m)
+			s,ms = [int(k) for k in sms.split(".")]
+			t0   = dt.datetime( year , month , day , h , m , s , ms )
+			xztime = [ t0 + dt.timedelta(days = i) for i in range(xztime.size)]
+		logger.info("="*80)
 		
 		## And now build the zarr file
 		xzarr.dtype = xdata[xcvars[0]].dtype
@@ -188,11 +200,11 @@ class XZarr:##{{{
 						break
 				
 				## Time idx
-				time     = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				time_fmt = xzarr.time.sel( time = time ).values.tolist()
-				if not type(time_fmt) is list:
-					time_fmt = [time_fmt]
-				idx      = xzarr._fmatch( time_fmt , xzarr.time.values.tolist() )
+				itime     = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				num_itime = cftime.date2num( itime  , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				num_time  = cftime.date2num( xztime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				t0,t1 = num_time[:2]
+				idx   = np.array( np.ceil( (num_itime - t0) / (t1 - t0 ) ) , int ).tolist()
 				
 				## Now loop on zchunks
 				for zc in xzarr.iter_zchunks():
@@ -499,13 +511,13 @@ def load_data( kwargs : dict ):
 		raise Exception( "If cvars is given for the ref (or the biased), cvars must be given for the biased (or the ref)" )
 	check_cvarsXY_is_same = False
 	if cvarsX is None:
-		cvarsX  = [key for key in dX.data_vars]
+		cvarsX  = [key for key in xX.data_vars]
 		cvarsX.sort()
 		check_cvarsXY_is_same = True
 	else:
 		cvarsX = cvarsX.split(",")
 	if cvarsY is None:
-		cvarsY  = [key for key in dY.data_vars]
+		cvarsY  = [key for key in xY.data_vars]
 		cvarsY.sort()
 		check_cvarsXY_is_same = True
 	else:
