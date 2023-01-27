@@ -183,7 +183,6 @@ class XZarr:##{{{
 			s,ms = [int(k) for k in sms.split(".")]
 			t0   = dt.datetime( year , month , day , h , m , s , ms )
 			xztime = [ t0 + dt.timedelta(days = i) for i in range(xztime.size)]
-		logger.info("="*80)
 		
 		## And now build the zarr file
 		xzarr.dtype = xdata[xcvars[0]].dtype
