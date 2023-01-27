@@ -710,7 +710,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				oncfile.setncattr( "bc_period_calibration" , "/".join( [str(x) for x in kwargs["calibration"]] ) )
 				oncfile.setncattr( "bc_window"        , ",".join( [str(x) for x in kwargs["window"]] ) )
 				oncfile.setncattr( "bc_reference"     , build_reference(kwargs["method"]) )
-				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr"],[SBCK,np,xr,dask,zarr]) ] ) )
+				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","zarr","netCDF4"],[SBCK,np,xr,dask,zarr,netCDF4]) ] ) )
 				
 				## Start with dimensions
 				dims   = [d for d in incfile.dimensions if not d == time_axis ]
@@ -718,7 +718,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				ncdims[time_axis] = oncfile.createDimension( time_axis  , None )
 				
 				## Define variables of dimensions
-				ncv_dims = { d : oncfile.createVariable( d , incfile.variables[d].dtype , (d,)  , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[d].chunking() ) for d in dims if d in incfile.variables }
+				ncv_dims = { d : oncfile.createVariable( d , incfile.variables[d].dtype , (d,)  , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[d].chunking() ) for d in dims if d in incfile.variables }
 				ncv_dims[time_axis] = oncfile.createVariable( time_axis , incfile.variables[time_axis].dtype , (time_axis,)  , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = (1,) )
 				
 				## Copy attributes of the dimensions
@@ -732,7 +732,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				## And fill dimensions
 				for d in list(set(dims) & set([k for k in ncv_dims])):
 					ncv_dims[d][:] = incfile.variables[d][:]
-				ncv_dims[time_axis][:] = cftime.date2num( otime , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
+				ncv_dims[time_axis][:] = cftime.date2num( otime.values , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
 				dims.append(time_axis)
 				
 				## Continue with all variables, except the "main" variable
@@ -741,7 +741,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				for v in variables:
 					
 					## Create the variable
-					ncvars[v] = oncfile.createVariable( v , incfile.variables[v].dtype , incfile.variables[v].dimensions , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[d].chunking() )
+					ncvars[v] = oncfile.createVariable( v , incfile.variables[v].dtype , incfile.variables[v].dimensions , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[v].chunking() )
 					
 					## Copy attributes
 					for name in incfile.variables[v].ncattrs():
@@ -754,7 +754,18 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 					if len(incfile.variables[v].shape) == 0: ## Scalar variable
 						ncvars[v].assignValue(incfile.variables[v].getValue())
 					else:
-						ncvars[v][:] = oncfile.variables[v][:]
+						if time_axis in incfile.variables[v].dimensions:
+							
+							## Tuple of selection
+							idx = cftime.date2index( otime , incfile.variables[time_axis] , incfile.variables[time_axis].calendar )
+							sel = [slice(None) for _ in range(len(incfile.variables[v].dimensions))]
+							sel[list(incfile.variables[v].dimensions).index(time_axis)] = idx
+							sel = tuple(sel)
+							
+							## And copy var
+							ncvars[v][:] = incfile.variables[v][sel]
+						else:
+							ncvars[v][:] = incfile.variables[v][:]
 				
 				## Find fill and missing value
 				try:
@@ -769,24 +780,27 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				## Create the main variable
 				S = SizeOf( f"{np.prod(incfile.variables[cvarX].shape) * (np.finfo(incfile.variables[cvarX].dtype).bits // SizeOf('1o').bits_per_byte)}o" )
 				if S.o < SizeOf("5Go").o:
-					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , fill_value = fill_value , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[cvarX].chunking() )
+					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[cvarX].chunking() )
 				else:
-					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].get_dims() , fill_value = fill_value )
+					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value )
 				if missing_value is not None:
 					ncvar.setncattr( "missing_value" , missing_value )
 				
 				## Copy attributes
 				for name in incfile.variables[cvarX].ncattrs():
 					try:
-						ncvar.setncattr( name , incfile.variables[cvarX].getncattr(name) )
+						if name == "long_name":
+							ncvar.setncattr( name , "Bias Corrected " + incfile.variables[cvarX].getncattr(name) )
+						else:
+							ncvar.setncattr( name , incfile.variables[cvarX].getncattr(name) )
 					except AttributeError:
 						pass
 				
 				## And fill
-				time_fmt = zZ.time.sel( time = otime ).values.tolist()
-				if not type(time_fmt) is list:
-					time_fmt = [time_fmt]
-				idx      = zZ._fmatch( time_fmt , zZ.time.values.tolist() )
+				num_otime = cftime.date2num( otime , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
+				num_time  = cftime.date2num(  time , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
+				t0,t1 = num_time[:2]
+				idx   = np.array( np.ceil( (num_otime - t0) / (t1 - t0 ) ) , int ).tolist()
 				
 				## Now loop on zchunks
 				for zc in zZ.iter_zchunks():
