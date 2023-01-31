@@ -57,6 +57,33 @@ logger.addHandler(logging.NullHandler())
 ##                                                                            ##
 ##============================================================================##
 
+def delete_hour_from_time_axis( time ):##{{{
+	
+	if isinstance(time,xr.DataArray):
+		time = time.values
+	t0 = time[0]
+	
+	if isinstance(t0,np.datetime64):
+		cls = dt.datetime
+	elif isinstance(t0,cftime.DatetimeGregorian):
+		cls = cftime.DatetimeGregorian
+	elif isinstance(t0,cftime.DatetimeProlepticGregorian):
+		cls = cftime.DatetimeProlepticGregorian
+	elif isinstance(t0,cftime.DatetimeNoLeap):
+		cls = cftime.DatetimeNoLeap
+	elif isinstance(t0,cftime.Datetime360Day):
+		cls = cftime.Datetime360Day
+	else:
+		raise Exception(f"Unknow calendar: t0 = {t0}, type(t0) = {type(t0)}")
+	
+	t0 = str(t0)
+	year,month,day = [int(s) for s in t0[:10].split("-")]
+	t0   = cls( year , month , day )
+	dtime = [ t0 + dt.timedelta(days = i) for i in range(time.size)]
+	
+	return dtime
+##}}}
+
 ## TODO time_axis
 ## TODO documentation
 class XZarr:##{{{
@@ -111,6 +138,7 @@ class XZarr:##{{{
 		self.shape  = None
 		self.dims   = None
 		self.coords = None
+		self.dtime  = None
 		
 		self.dtype  = None
 		self.data   = None
@@ -174,16 +202,9 @@ class XZarr:##{{{
 		xzarr.shape  = xdata[xcvars[0]].shape  + (len(xcvars),)
 		xzarr.dims   = xdata[xcvars[0]].dims   + ("cvar",)
 		xzarr.coords = [xdata[c] for c in xzarr.dims[:-1]] + [zcvars,]
-		xztime = xzarr.coords[0]
-		if isinstance( xztime[0].values , np.datetime64 ):
-			t0 = str(xztime[0].values)
-			year,month,day = [int(s) for s in t0[:10].split("-")]
-			h,m,sms        = t0[11:].split(":")
-			h = int(h)
-			m = int(m)
-			s,ms = [int(k) for k in sms.split(".")]
-			t0   = dt.datetime( year , month , day , h , m , s , ms )
-			xztime = [ t0 + dt.timedelta(days = i) for i in range(xztime.size)]
+		xzarr.dtime  = delete_hour_from_time_axis(xzarr.coords[0])
+		dtime        = xzarr.dtime
+		xzarr.coords[0] = xr.DataArray( dtime , dims = [time_axis] , coords = { time_axis : dtime } )
 		
 		## And now build the zarr file
 		xzarr.dtype = xdata[xcvars[0]].dtype
@@ -201,8 +222,11 @@ class XZarr:##{{{
 				
 				## Time idx
 				itime     = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				num_itime = cftime.date2num( itime  , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				num_time  = cftime.date2num( xztime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				itime     = delete_hour_from_time_axis( itime )
+				num_itime = cftime.date2num( itime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				num_time  = cftime.date2num( dtime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				if not np.unique(np.diff(num_itime)).size == 1 or  not np.unique(np.diff(num_time )).size == 1:
+					raise Exception(f"Missing values or invalid time axis in the file {ifile}")
 				t0,t1 = num_time[:2]
 				idx   = np.array( np.ceil( (num_itime - t0) / (t1 - t0 ) ) , int ).tolist()
 				
@@ -677,6 +701,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 			## Read the time axis
 			nctime = incfile.variables[time_axis]
 			time   = cftime.num2date( nctime[:] , nctime.units , nctime.calendar )
+			time   = delete_hour_from_time_axis(time)
 			time   = xr.DataArray( time , dims = [time_axis] , coords = [time] )
 			
 			## Sub select the time
