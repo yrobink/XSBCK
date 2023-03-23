@@ -140,9 +140,9 @@ def start_xsbck(*argv):##{{{
 	
 	## Package version
 	logger.info( "Packages version:" )
-	logger.info( " * {:{fill}{align}{n}}".format( "XSBCK" , fill = " " , align = "<" , n = 8 ) + f"version {version}" )
+	logger.info( " * {:{fill}{align}{n}}".format( "XSBCK" , fill = " " , align = "<" , n = 12 ) + f"version {version}" )
 	for name_pkg,pkg in zip(["SBCK","numpy","xarray","dask","distributed","zarr","netCDF4"],[bc,np,xr,dask,distributed,zarr,netCDF4]):
-		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 8 ) +  f"version {pkg.__version__}" )
+		logger.info( " * {:{fill}{align}{n}}".format( name_pkg , fill = " " , align = "<" , n = 12 ) +  f"version {pkg.__version__}" )
 	logger.info(LINE)
 	
 	## Serious functions start here
