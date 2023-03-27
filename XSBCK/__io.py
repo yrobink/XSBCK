@@ -67,6 +67,8 @@ def delete_hour_from_time_axis( time ):##{{{
 		cls = cftime.DatetimeNoLeap
 	elif isinstance(t0,cftime.Datetime360Day):
 		cls = cftime.Datetime360Day
+	elif isinstance(t0,dt.datetime):
+		cls = dt.datetime
 	else:
 		raise Exception(f"Unknow calendar: t0 = {t0}, type(t0) = {type(t0)}")
 	
