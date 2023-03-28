@@ -589,6 +589,13 @@ def load_data( kwargs : dict ):
 	logger.info( f" * cvarsY: {cvarsY}" )
 	logger.info( f" * cvarsZ: {cvarsZ}" )
 	
+	for cvarX in cvarsX:
+		if cvarX not in xX:
+			raise Exception( f"Variable '{cvarX}' not in biased data" )
+	for cvarY in cvarsY:
+		if cvarY not in xY:
+			raise Exception( f"Variable '{cvarY}' not in reference data" )
+	
 	## Remove of the dataset all variables without time axis
 	keys_to_del = [key for key in xX.data_vars if time_axis not in xX[key].dims]
 	for key in keys_to_del:
