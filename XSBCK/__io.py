@@ -38,6 +38,8 @@ import netCDF4
 import zarr
 import SBCK
 
+from .__XSBCKParams import xsbckParams
+
 from .__release import version
 from .__logs    import log_start_end
 from .__utils   import SizeOf
@@ -103,8 +105,6 @@ def time_match( sub , ens ):##{{{
 ##                                                                            ##
 ##============================================================================##
 
-## TODO time_axis
-## TODO documentation
 class XZarr:##{{{
 	"""
 	XSBCK.XZarr
@@ -525,16 +525,11 @@ class XZarr:##{{{
 
 ## load_data ##{{{
 @log_start_end(logger)
-def load_data( kwargs : dict ):
+def load_data():
 	"""
 	XSBCK.load_data
 	===============
 	Function used to read data and copy in a temporary zarr file
-	
-	Arguments
-	---------
-	kwargs:
-		dict of all parameters of XSBCK
 	
 	Returns
 	-------
@@ -547,14 +542,14 @@ def load_data( kwargs : dict ):
 	"""
 	
 	##
-	time_axis = "time" ##kwargs["time_axis"]
-	cvarsX = kwargs["cvarsX"]
-	cvarsY = kwargs["cvarsY"]
-	cvarsZ = kwargs["cvarsZ"]
+	time_axis = xsbckParams.time_axis
+	cvarsX = xsbckParams.cvarsX
+	cvarsY = xsbckParams.cvarsY
+	cvarsZ = xsbckParams.cvarsZ
 	
 	## Open with xarray to decode all variables and time axis
-	xX = xr.open_mfdataset( kwargs["input_biased"]    , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
-	xY = xr.open_mfdataset( kwargs["input_reference"] , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
+	xX = xr.open_mfdataset( xsbckParams.input_biased    , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
+	xY = xr.open_mfdataset( xsbckParams.input_reference , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
 	
 	## Init cvars
 	logger.info("Check cvars")
@@ -581,9 +576,9 @@ def load_data( kwargs : dict ):
 	else:
 		cvarsZ = cvarsZ.split(",")
 	
-	kwargs["cvarsX"] = cvarsX
-	kwargs["cvarsY"] = cvarsY
-	kwargs["cvarsZ"] = cvarsZ
+	xsbckParams.cvarsX = cvarsX
+	xsbckParams.cvarsY = cvarsY
+	xsbckParams.cvarsZ = cvarsZ
 	
 	logger.info( f" * cvarsX: {cvarsX}" )
 	logger.info( f" * cvarsY: {cvarsY}" )
@@ -605,23 +600,23 @@ def load_data( kwargs : dict ):
 		del xY[key]
 	
 	## Find spatial memory available
-	total_memory       = kwargs["total_memory"].o
-	frac_mem_per_array = kwargs["frac_memory_per_array"]
-	max_mem_per_chunk  = SizeOf( f"{int(frac_mem_per_array * total_memory)}o" )
-	max_time           = 365 * max( int(kwargs["calibration"][1]) - int(kwargs["calibration"][0]) + 1 , sum(kwargs['window']) )
+	total_memory       = xsbckParams.total_memory.o
+	frac_mem_per_array = xsbckParams.frac_memory_per_array
+	max_mem_per_chunk  = SizeOf( n = int(frac_mem_per_array * total_memory) , unit = "o" )
+	max_time           = 365 * max( np.diff([int(s) for s in xsbckParams.calibration]) + 1 , sum(xsbckParams.window) )
 	max_cvar           = len(cvarsZ)
-	avail_spatial_mem  = SizeOf( f"{int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // max_mem_per_chunk.bits_per_octet) ) )}o" )
+	avail_spatial_mem  = SizeOf( n = int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // max_mem_per_chunk.bits_per_octet) ) ) , unit = "o" )
 	
 	logger.info( "Check memory:" )
-	logger.info( f" * Max mem. per chunk: {max_mem_per_chunk.o}o" )
+	logger.info( f" * Max mem. per chunk: {max_mem_per_chunk}" )
 	logger.info( f" * Max time step     : {max_time}" )
 	logger.info( f" * Max cvar          : {max_cvar}" )
-	logger.info( f" * Avail Spat. Mem.  : {avail_spatial_mem.o}o" )
+	logger.info( f" * Avail Spat. Mem.  : {avail_spatial_mem}" )
 	
 	## Find chunks
-	dask_chunks = kwargs["chunks"]
+	dask_chunks = xsbckParams.chunks
 	if dask_chunks == -1:
-		dask_chunks = kwargs["n_workers"] * kwargs["threads_per_worker"]
+		dask_chunks = xsbckParams.n_workers * xsbckParams.threads_per_worker
 	
 	ny = xX[xX[cvarsX[0]].dims[1]].size
 	nx = xX[xX[cvarsX[0]].dims[2]].size
@@ -636,11 +631,11 @@ def load_data( kwargs : dict ):
 	
 	## Now zarr file
 	logger.info( "Create biased zarr file..." )
-	zX = XZarr.from_dataset( os.path.join( kwargs["tmp"] , "X.zarr" ) , xX , ifiles = kwargs["input_biased"]    , xcvars = cvarsX , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
+	zX = XZarr.from_dataset( os.path.join( xsbckParams.tmp , "X.zarr" ) , xX , ifiles = xsbckParams.input_biased    , xcvars = cvarsX , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
 	logger.info( "Create reference zarr file..." )
-	zY = XZarr.from_dataset( os.path.join( kwargs["tmp"] , "Y.zarr" ) , xY , ifiles = kwargs["input_reference"] , xcvars = cvarsY , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
+	zY = XZarr.from_dataset( os.path.join( xsbckParams.tmp , "Y.zarr" ) , xY , ifiles = xsbckParams.input_reference , xcvars = cvarsY , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
 	logger.info( "Create corrected (empty) zarr file..." )
-	zZ = zX.copy( os.path.join( kwargs["tmp"] , "Z.zarr" ) , np.nan )
+	zZ = zX.copy( os.path.join( xsbckParams.tmp , "Z.zarr" ) , np.nan )
 	
 	logger.info( f"About biased data:" )
 	logger.info( f" * shape  : {str(zX.shape)}" )
