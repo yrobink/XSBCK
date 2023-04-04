@@ -33,7 +33,7 @@ logger.addHandler(logging.NullHandler())
 ## Classes
 ##########
 
-class SizeOf:##{{{
+class SizeOf:
 	"""
 	XSBCK.SizeOf
 	============
@@ -54,12 +54,20 @@ class SizeOf:##{{{
 	
 	"""
 	
-	def __init__( self , s ):##{{{
+	def __init__( self , s = None , n = None , unit = "b" ):##{{{
 		
-		## Check is str
-		if not isinstance(s,str):
-			raise Exception
+		if s is not None and n is None:
+			self._init_from_str(s)
+		elif n is not None and s is None:
+			self._init_from_value( n , unit )
+		elif s is None and n is None:
+			raise ValueError( f"'s' or 'n' must be set!" )
+		else:
+			raise ValueError( f"s = {s} and n = {n} can not be set simultaneously!" )
 		
+	##}}}
+	
+	def _init_from_str( self , s ):##{{{
 		s = s.replace(" ","")
 		
 		## Start with unit
@@ -107,20 +115,32 @@ class SizeOf:##{{{
 		self.bits = int(self.bits)
 	##}}}
 	
+	def _init_from_value( self , n , unit ):##{{{
+		
+		if not isinstance( n , int ):
+			raise ValueError( f"n = {n} must be an integer" )
+		self._init_from_str( f"{n}{unit}" )
+	##}}}
+	
 	def __repr__( self ):##{{{
 		return self.__str__()
 	##}}}
 	
 	def __str__( self ):##{{{
-		return f"{self.value}{self.scale}{self.ibase}{self.unit} == {self.bits}b"
-#		out = []
-#		out.append( f"{self.value}{self.scale}{self.ibase}{self.unit} == {self.bits}b" )
-#		out.append( f" * unit : {self.unit}" )
-#		out.append( f" * base : {self.base}" )
-#		out.append( f" * scale: {self.scale}" )
-#		out.append( f" * value: {self.value}" )
-#		
-#		return "\n".join(out)
+		
+		if int(self.o) == 0:
+			return "{:.2f}o".format(self.o)
+		elif int(self.ko) == 0:
+			return "{:.2f}o".format(self.o)
+		elif int(self.Mo) == 0:
+			return "{:.2f}ko".format(self.ko)
+		elif int(self.Go) == 0:
+			return "{:.2f}Mo".format(self.Mo)
+		elif int(self.To) == 0:
+			return "{:.2f}Go".format(self.Go)
+		
+		return "{:.2f}To".format(self.To)
+		
 	##}}}
 	
 	## Properties ##{{{
@@ -291,9 +311,104 @@ class SizeOf:##{{{
 	@property
 	def Tib( self ):
 		return self.bits / 1024**4
+	##}}}
+	
+	## Comparison operators overload ##{{{
+	
+	def __eq__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits == other.bits
+	##}}}
+	
+	def __ne__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits != other.bits
+	##}}}
+	
+	def __lt__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits < other.bits
+	##}}}
+	
+	def __gt__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits > other.bits
+	##}}}
+	
+	def __le__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits <= other.bits
+	##}}}
+	
+	def __ge__( self , other ):##{{{
+		
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return self.bits >= other.bits
+	##}}}
 	
 	##}}}
 	
-##}}}
-
+	## Arithmetic operators overload ##{{{
+	
+	def __add__( self , other ):##{{{
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return SizeOf( n = self.bits + other.bits , unit = "b" )
+	##}}}
+	
+	def __radd__( self , other ):##{{{
+		if isinstance(other,str):
+			other = SizeOf(other)
+		
+		return SizeOf( n = self.bits + other.bits , unit = "b" )
+	##}}}
+	
+	def __mul__( self , x ):##{{{
+		if not isinstance(x,int):
+			raise ValueError( "Only multiplication by an integer is allowed" )
+		
+		return SizeOf( n = self.bits * x , unit = "b" )
+	##}}}
+	
+	def __rmul__( self , x ):##{{{
+		if not isinstance(x,int):
+			raise ValueError( "Only multiplication by an integer is allowed" )
+		
+		return SizeOf( n = self.bits * x , unit = "b" )
+	##}}}
+	
+	def __floordiv__( self , x ):##{{{
+		if not isinstance(x,int):
+			raise ValueError( "Only division by an integer is allowed" )
+		
+		return SizeOf( n = self.bits // x , unit = "b" )
+	##}}}
+	
+	def __mod__( self , x ):##{{{
+		if not isinstance(x,int):
+			raise ValueError( "Only modulo operator by an integer is allowed" )
+		
+		return SizeOf( n = self.bits % x , unit = "b" )
+	##}}}
+	
+	##}}}
+	
 
