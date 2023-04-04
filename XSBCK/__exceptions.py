@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022 Yoann Robin
+## Copyright(c) 2022 / 2023 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -16,11 +16,7 @@
 ## You should have received a copy of the GNU General Public License
 ## along with XSBCK.  If not, see <https://www.gnu.org/licenses/>.
 
-class UserDefinedLoggingLevelError(Exception):
-	def __init__( self , *args , **kwargs ):
-		super().__init__( *args , **kwargs )
-
-class AbortException(Exception):
+class AbortForHelpException(Exception):
 	def __init__( self , *args , **kwargs ):
 		super().__init__( *args , **kwargs )
 
