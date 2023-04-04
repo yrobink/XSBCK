@@ -240,19 +240,16 @@ def save_data( zX : XZarr , zZ : XZarr ):
 			## idx_o_d_t: index of the output data, w.r.t. d_time
 			i_time    = cftime.num2date( incfile.variables[time_axis] , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
 			i_time_wh = delete_hour_from_time_axis(i_time)
-			o_time_wh = delete_hour_from_time_axis(xr.DataArray( i_time_wh , dims = [time_axis] , coords = [i_time_wh] ).sel( time = slice(tstart,tend) ))
+			o_time_wh = xr.DataArray( i_time_wh , dims = [time_axis] , coords = [i_time_wh] ).sel( time = slice(tstart,tend) )
+			if o_time_wh.size == 0:
+				logger.info( " * Not in time selection, continue" )
+				continue
+			o_time_wh = delete_hour_from_time_axis(o_time_wh)
 			idx_o_i_t = time_match( o_time_wh , i_time_wh )
 			o_time    = i_time[idx_o_i_t]
 			d_time    = zZ.dtime
 			idx_o_d_t = time_match( o_time_wh , d_time )
 			
-			## Check if needed to continue
-			if o_time[-1].year < int(tstart):
-				logger.info( f" * End year {o_time[-1].year} < start year {tstart}, skip." )
-				continue
-			if o_time[0].year > int(tend):
-				logger.info( f" * Start year {o_time[0].year} < end year {tend}, skip." )
-				continue
 			
 			## Find the variable
 			cvarX = list(set(cvarsX) & set(incfile.variables))[0]
