@@ -25,7 +25,6 @@ import os
 import gc
 import logging
 import datetime as dt
-import importlib
 
 import numpy  as np
 import xarray as xr
@@ -35,6 +34,7 @@ import SBCK.ppp as bcp
 
 import inspect
 
+from .__XSBCKParams import xsbckParams
 from .__logs import log_start_end
 
 
@@ -53,192 +53,6 @@ logger.addHandler(logging.NullHandler())
 ###############
 ## Functions ##
 ###############
-
-## build_pipe ##{{{
-@log_start_end(logger)
-def build_pipe( cvars , kwargs : dict ):
-	"""
-	XSBCK.build_pipe
-	================
-	Function used to build PrePostProcessing class from user input
-	
-	Arguments
-	---------
-	cvars:
-		List of climate variables to be corrected
-	kwargs:
-		dict of all parameters of XSBCK
-	
-	Returns
-	-------
-	pipe:
-		List of class based on SBCK.ppp.PrePostProcessing
-	pipe_kwargs:
-		List of kwargs passed to elements of pipe
-	"""
-	
-	lppps = kwargs.get("ppp")
-	
-	if lppps is None:
-		return [],[]
-	
-	## Init
-	pipe        = []
-	pipe_kwargs = []
-	
-	## Identify columns
-	dcols = { cvar : [cvars.index(cvar)] for cvar in cvars }
-	
-	## Explore SBCK.ppp
-	ppp_avail = [clsname for clsname in dir(bcp) if clsname.startswith("PPP") ]
-	
-	## Loop on ppp
-	for i in range(len(lppps)):
-		
-		## Find cvar and list of ppp
-		cvar,_,ppps_str = lppps[i].partition(",")
-		
-		## Split with ',', and remerge (e.g. 'A[B=2,C=3],K' => ['A[B=2,C=3]','K'] and not ['A[B=2','C=3]','K']
-		split = ppps_str.split(",")
-		lppp  = []
-		while len(split) > 0:
-			
-			if "[" in split[0]:
-				if "]" in split[0]:
-					lppp.append(split[0])
-					del split[0]
-				else:
-					for j in range(len(split)):
-						if "]" in split[j]:
-							break
-					lppp.append( ",".join(split[:(j+1)]) )
-					split = split[(j+1):]
-			else:
-				lppp.append(split[0])
-				del split[0]
-		
-		## Loop on ppp
-		for ppp in lppp:
-			
-			## Extract name / parameters
-			if "[" in ppp:
-				p_name,p_param = ppp.split("[")
-				p_param = p_param.split("]")[0].split(",")
-			else:
-				p_name  = ppp
-				p_param = []
-			
-			## Find the true name
-			if p_name in ppp_avail:
-				pass
-			elif f"PPP{p_name}" in ppp_avail:
-				p_name = f"PPP{p_name}"
-			elif f"{p_name}Link" in ppp_avail:
-				p_name = f"{p_name}Link"
-			elif f"PPP{p_name}Link" in ppp_avail:
-				p_name = f"PPP{p_name}Link"
-			else:
-				raise Exception(f"Unknow ppp {p_name}")
-			
-			## Define the class, and read the signature
-			cls     = getattr(bcp,p_name)
-			insp    = inspect.getfullargspec(cls)
-			pkwargs = insp.kwonlydefaults
-			
-			## Special case, the cols parameter
-			if "cols" in pkwargs and cvar in cvars:
-				pkwargs["cols"] = dcols[cvar]
-			
-			## And others parameters
-			for p in p_param:
-				key,val = p.split("=")
-				if key in insp.annotations:
-					pkwargs[key] = insp.annotations[key](val)
-				else:
-					pkwargs[key] = val
-					
-					## Special case, val is a list (as sum) of cvar
-					if len(set(val.split("+")) & set(cvars)) > 0:
-						pkwargs[key] = []
-						for v in val.split("+"):
-							if not v in dcols:
-								raise Exception(f"Unknow '{v}' as parameter for the ppp {p_name}")
-							pkwargs[key] = pkwargs[key] + dcols[v]
-			
-			## Append
-			pipe.append(cls)
-			pipe_kwargs.append(pkwargs)
-	
-	logger.info( "PPP found:" )
-	for p in pipe:
-		logger.info( f" * {str(p)}" )
-	
-	return pipe,pipe_kwargs
-##}}}
-
-def checkf(X):##{{{
-	return np.any(np.isfinite(X))
-##}}}
-
-## build_BC_method ##{{{
-@log_start_end(logger)
-def build_BC_method( cvars , kwargs : dict ):
-	"""
-	XSBCK.build_BC_method
-	=====================
-	Function used to build the bias correction class class from user input
-	
-	Arguments
-	---------
-	cvars:
-		List of climate variables to be corrected
-	kwargs:
-		dict of all parameters of XSBCK
-	
-	Returns
-	-------
-	bc_n_kwargs:
-		dict describing the non-stationary BC method used
-	bc_s_kwargs:
-		dict describing the stationary BC method used
-	"""
-	
-	bc_method = bcp.PrePostProcessing
-	
-	## Find method kwargs
-	dkwd = {}
-	if kwargs.get("method_kwargs") is not None:
-		dkwd = { k : v for (k,v) in [ kv.split("=") for kv in kwargs["method_kwargs"].split(",")] }
-	
-	## The method
-	if "IdBC" in kwargs["method"]:
-		bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-		bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
-	if "CDFt" in kwargs["method"]:
-		bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
-		bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
-	if "dOTC" in kwargs["method"]:
-		bc_method_n_kwargs = { "bc_method" : bc.dOTC , "bc_method_kwargs" : {} }
-		bc_method_s_kwargs = { "bc_method" : bc.OTC  , "bc_method_kwargs" : {} }
-	if "R2D2" in kwargs["method"]:
-		col_cond   = [0]
-		if "col_cond" in dkwd:
-			col_cond = [cvars.index(cvar) for cvar in dkwd["col_cond"].split("+")]
-		lag_keep   = int(kwargs["method"].split("-")[-1][:-1]) + 1
-		lag_search = 2 * lag_keep
-		bcmkwargs  = { "col_cond" : [0] , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True }
-		bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.CDFt } }
-		bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.QM   } }
-	
-	## The pipe
-	pipe,pipe_kwargs = build_pipe( cvars , kwargs )
-	
-	## Global arguments
-	bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : checkf }
-	bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : checkf }
-	
-	return bc_n_kwargs,bc_s_kwargs
-##}}}
 
 
 def yearly_window( tbeg_ , tend_ , wleft , wpred , wright , tleft_ , tright_ ):##{{{
@@ -403,7 +217,7 @@ def sbck_s_ufunc( Y0 , X0 , cls , **kwargs ):##{{{
 
 ## spatial_chunked_correction ##{{{
 @log_start_end(logger)
-def spatial_chunked_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs , zc ):
+def spatial_chunked_correction( zX , zY , zZ , zc ):
 	"""
 	XSBCK.spatial_chunked_correction
 	================================
@@ -516,7 +330,7 @@ def spatial_chunked_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwarg
 
 ## global_correction ##{{{
 @log_start_end(logger)
-def global_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs ):
+def global_correction( zX , zY , zZ ):
 	"""
 	XSBCK.global_correction
 	================================
@@ -541,7 +355,7 @@ def global_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs ):
 	
 	for zc in zX.iter_zchunks():
 		logger.info( f"zchunks ({zc[0]+1},{zc[1]+1}) / ({zX.data.cdata_shape[1]},{zX.data.cdata_shape[2]})" )
-		spatial_chunked_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs , zc )
+		spatial_chunked_correction( zX , zY , zZ , zc )
 	
 ##}}}
 
