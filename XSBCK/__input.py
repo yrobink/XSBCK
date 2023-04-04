@@ -33,6 +33,7 @@ from .__utils import SizeOf
 logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
+from .__XSBCKParams import xsbckParams
 
 ## Functions
 ############
@@ -72,6 +73,8 @@ def read_inputs(*argv):##{{{
 	parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
 	
 	kwargs = vars(parser.parse_args(argv))
+	
+	xsbckParams.init_from_user_input(**kwargs)
 	
 	## Switch tmp folder
 	kwargs["tmp_base"] = kwargs["tmp"]
