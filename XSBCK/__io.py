@@ -43,6 +43,9 @@ from .__XSBCKParams import xsbckParams
 from .__release import version
 from .__logs    import log_start_end
 from .__utils   import SizeOf
+from .__utils   import build_reference
+from .__utils   import delete_hour_from_time_axis
+from .__utils   import time_match
 
 from .__XZarr import XZarr
 
@@ -191,7 +194,7 @@ def load_data():
 ## save_data ##{{{ 
 
 @log_start_end(logger)
-def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
+def save_data( zX : XZarr , zZ : XZarr ):
 	"""
 	XSBCK.save_data
 	===============
@@ -204,8 +207,6 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 		XZarr file of the biased dataset
 	zZ:
 		XZarr file of the corrected dataset
-	kwargs:
-		dict of all parameters of XSBCK
 	
 	Returns
 	-------
@@ -213,16 +214,17 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 	"""
 	
 	## Build mapping between cvarsX and cvarsZ
-	cvarsX = kwargs["cvarsX"]
-	cvarsZ = kwargs["cvarsZ"]
+	cvarsX = xsbckParams.cvarsX
+	cvarsZ = xsbckParams.cvarsZ
 	mcvars = { x : z for x,z in zip(cvarsX,cvarsZ) }
 	
 	time_chunk = zZ.zarr_chunks[0]
-	tstart = kwargs["start_year"]
-	tend   = kwargs["end_year"]
+	time_axis  = xsbckParams.time_axis
+	tstart     = xsbckParams.start_year
+	tend       = xsbckParams.end_year
 	
 	## Loop on input files
-	for ifile in kwargs["input_biased"]:
+	for ifile in xsbckParams.input_biased:
 		
 		logger.info( f"File {os.path.basename(ifile)}" )
 		
@@ -260,12 +262,12 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 			
 			## The output file
 			bifile = os.path.basename(ifile)
-			prefix = f"{cvarZ}_{kwargs['method']}"
+			prefix = f"{cvarZ}_{xsbckParams.method}"
 			if cvarX in bifile:
 				ofile = bifile.replace(cvarX,prefix)
 			else:
 				ofile = f"{prefix}_{bifile}"
-			ofile = os.path.join( kwargs["output_dir"] , ofile )
+			ofile = os.path.join( xsbckParams.output_dir , ofile )
 			logger.info( f" * ofile: {ofile}" )
 			
 			## Now write the output file
@@ -282,10 +284,10 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				
 				## Add BC attributes
 				oncfile.setncattr( "bc_creation_date" , str(dt.datetime.utcnow())[:19] + " (UTC)" )
-				oncfile.setncattr( "bc_method"        , kwargs["method"] )
-				oncfile.setncattr( "bc_period_calibration" , "/".join( [str(x) for x in kwargs["calibration"]] ) )
-				oncfile.setncattr( "bc_window"        , ",".join( [str(x) for x in kwargs["window"]] ) )
-				oncfile.setncattr( "bc_reference"     , build_reference(kwargs["method"]) )
+				oncfile.setncattr( "bc_method"        , xsbckParams.method )
+				oncfile.setncattr( "bc_period_calibration" , "/".join( [str(x) for x in xsbckParams.calibration] ) )
+				oncfile.setncattr( "bc_window"        , ",".join( [str(x) for x in xsbckParams.window] ) )
+				oncfile.setncattr( "bc_reference"     , build_reference(xsbckParams.method) )
 				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","distributed","zarr","netCDF4"],[SBCK,np,xr,dask,distributed,zarr,netCDF4]) ] ) )
 				
 				## Start with dimensions
@@ -356,7 +358,7 @@ def save_data( zX : XZarr , zZ : XZarr , kwargs : dict ):
 				
 				## Create the main variable
 				S = SizeOf( f"{np.prod(incfile.variables[cvarX].shape) * (np.finfo(incfile.variables[cvarX].dtype).bits // SizeOf('1o').bits_per_byte)}o" )
-				if S.o < SizeOf("5Go").o:
+				if S < "5Go":
 					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[cvarX].chunking() )
 				else:
 					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value )

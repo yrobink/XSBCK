@@ -35,6 +35,7 @@ import dataclasses
 import dask
 import distributed
 
+import numpy as np
 import SBCK as bc
 import SBCK.ppp as bcp
 
@@ -58,7 +59,6 @@ from .__exceptions  import AbortForHelpException
 #	dOTC = "dOTC"
 
 bcMethods = ["IdBC","CDFt","R2D2","dOTC"]
-
 
 
 @dataclasses.dataclass
@@ -123,7 +123,7 @@ class XSBCKParams:
 		parser.add_argument( "--total-memory"       , default = "auto" )
 		parser.add_argument( "--tmp"         , default = None )
 		parser.add_argument( "--window"      , default = (5,10,5) )
-		parser.add_argument( "--chunks"      , default = None )
+		parser.add_argument( "--chunks"      , default = -1 )
 		parser.add_argument( "--calibration" , default = ("1976","2005") )
 		parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
 		parser.add_argument( "--cvarsX" , default = None )

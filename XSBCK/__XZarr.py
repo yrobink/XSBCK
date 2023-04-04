@@ -21,16 +21,22 @@
 #############
 
 import itertools as itt
+import logging
 
 import netCDF4
 import cftime
 import zarr
+import datetime as dt
 
 import numpy as np
 import xarray as xr
 
 from .__utils import delete_hour_from_time_axis
+from .__utils import time_match
 
+## Init logging
+logger = logging.getLogger(__name__)
+logger.addHandler(logging.NullHandler())
 
 #############
 ## Classes ##
@@ -77,7 +83,7 @@ class XZarr:
 		 
 		"""
 		
-		self._fmatch = lambda a,b: [ b.index(x) if x in b else None for x in a ]
+#		self._fmatch = lambda a,b: [ b.index(x) if x in b else None for x in a ]
 		
 		self.fzarr   = fzarr
 		self.persist = persist
@@ -307,10 +313,7 @@ class XZarr:
 		 
 		"""
 		
-		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
-		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
-		
+		idx = time_match( self.time.sel( time = time ) , self.time )
 		dask_chunks = { "time" : -1 , "cvar" : -1 }
 		if zc is None:
 			sel    = (idx,slice(None),slice(None),slice(None))
@@ -369,10 +372,11 @@ class XZarr:
 		 
 		"""
 		
-		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
-		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
-		icvar    = self.cvars.index(cvar)
+#		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+#		if not type(time_fmt) is list: time_fmt = [time_fmt]
+#		idx   = self._fmatch( time_fmt , self.time.values.tolist() )
+		idx   = time_match( self.time.sel( time = time ) , self.time )
+		icvar = self.cvars.index(cvar)
 		
 		
 		if zc is None:
@@ -417,9 +421,10 @@ class XZarr:
 		"""
 		
 		time     = time if time is not None else X.time
-		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
-		if not type(time_fmt) is list: time_fmt = [time_fmt]
-		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
+#		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
+#		if not type(time_fmt) is list: time_fmt = [time_fmt]
+#		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
+		idx   = time_match( self.time.sel( time = time ) , self.time )
 		
 		if zc is None:
 			sel    = (idx,slice(None),slice(None),slice(None))

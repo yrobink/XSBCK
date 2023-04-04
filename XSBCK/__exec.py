@@ -43,14 +43,14 @@ from .__XSBCKParams import xsbckParams
 from .__exceptions  import AbortForHelpException
 
 from .__logs import LINE
-from .__logs    import log_start_end
+from .__logs import log_start_end
 
 from .__release    import version
 from .__curses_doc import print_doc
 
 from .__io import load_data
 from .__io import save_data
-from .__correction import build_BC_method
+
 from .__correction import global_correction
 
 
@@ -70,8 +70,10 @@ logger.addHandler(logging.NullHandler())
 ## Functions ##
 ###############
 
+## run_xsbck ##{{{
+
 @log_start_end(logger)
-def run_xsbck():##{{{
+def run_xsbck():
 	"""
 	XSBCK.run_xsbck
 	===============
@@ -82,18 +84,22 @@ def run_xsbck():##{{{
 	
 	xsbckParams.init_dask()
 	try:
-		raise Exception("Stop by user")
 		## Load data
-		zX,zY,zZ = load_data(kwargs)
+		zX,zY,zZ = load_data()
 		
-		## Build the BC method (non-stationary and stationary)
-		bc_n_kwargs,bc_s_kwargs = build_BC_method( zZ.cvars , kwargs )
+		## Build the BC strategy
+		xsbckParams.init_BC_strategy()
+		
+		## Logs
+		logger.info("PPP found:")
+		for ppp in xsbckParams.pipe:
+			logger.info( f" * {ppp}" )
 		
 		## Correction
-		global_correction( zX , zY , zZ , bc_n_kwargs , bc_s_kwargs , kwargs )
+		global_correction( zX , zY , zZ )
 		
 		## Save
-		save_data( zX , zZ , kwargs )
+		save_data( zX , zZ )
 		
 	except Exception as e:
 		raise e

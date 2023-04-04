@@ -231,12 +231,6 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 		The XZarr of the reference
 	zZ:
 		The XZarr of the output
-	bc_n_kwargs:
-		dict describing the non-stationary BC method used
-	bc_s_kwargs:
-		dict describing the stationary BC method used
-	kwargs:
-		dict of all parameters of XSBCK
 	zc:
 		The chunk identifier
 	
@@ -245,26 +239,30 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 	None
 	"""
 	
+	bc_n_kwargs = xsbckParams.bc_n_kwargs
+	bc_s_kwargs = xsbckParams.bc_s_kwargs
+	
 	## Parameters
 	months = [m+1 for m in range(12)]
 	
 	## Extract calibration period
-	calib = kwargs["calibration"]
+	calib = xsbckParams.calibration
 	Y0 = zY.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeY0" )
 	X0 = zX.sel_along_time( slice(*calib) , zc = zc ).rename( time = "timeX0" )
 	
 	## Init time
-	wleft,wpred,wright = kwargs["window"]
+	wleft,wpred,wright = xsbckParams.window
 	tleft  = str(zX.time[0].values)[:4]
 	tright = str(zX.time[-1].values)[:4]
-	tbeg = kwargs.get("start_year")
-	tend = kwargs.get("end_year")
+	tbeg = xsbckParams.start_year
+	tend = xsbckParams.end_year
 	if tbeg is None:
 		tbeg = tleft
-		kwargs["start_year"] = tbeg
+		xsbckParams.start_year = tbeg
 	if tend is None:
 		tend = tright
-		kwargs["end_year"] = tend
+		xsbckParams.end_year = tend
+	
 	
 	## Loop over time for projection period
 	for tf0,tp0,tp1,tf1 in yearly_window( tbeg , tend , wleft , wpred , wright , tleft , tright ):
@@ -272,7 +270,6 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 		## Build data in projection period
 		X1f = zX.sel_along_time( slice(tf0,tf1) , zc = zc ).rename( time = "timeX1f" )
 		X1p = X1f.sel( timeX1f = slice(tp0,tp1) ).rename( timeX1f = "timeX1p" )
-		
 		
 		## dim names
 		input_core_dims  = [("timeY0" ,"cvar"),("timeX0","cvar"),("timeX1f","cvar"),("timeX1p","cvar")]
@@ -344,12 +341,6 @@ def global_correction( zX , zY , zZ ):
 		The XZarr of the reference
 	zZ:
 		The XZarr of the output
-	bc_n_kwargs:
-		dict describing the non-stationary BC method used
-	bc_s_kwargs:
-		dict describing the stationary BC method used
-	kwargs:
-		dict of all parameters of XSBCK
 	
 	"""
 	
