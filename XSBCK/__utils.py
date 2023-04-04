@@ -20,6 +20,12 @@
 ##########
 
 import logging
+import datetime as dt
+
+import numpy as np
+import cftime
+import xarray as xr
+
 from .__logs import log_start_end
 
 ## Init logging
@@ -30,10 +36,83 @@ logger.addHandler(logging.NullHandler())
 ## Functions
 ############
 
+def delete_hour_from_time_axis( time ):##{{{
+	
+	if isinstance(time,xr.DataArray):
+		time = time.values
+	t0 = time[0]
+	
+	if isinstance(t0,np.datetime64):
+		cls = dt.datetime
+	elif isinstance(t0,cftime.DatetimeGregorian):
+		cls = cftime.DatetimeGregorian
+	elif isinstance(t0,cftime.DatetimeProlepticGregorian):
+		cls = cftime.DatetimeProlepticGregorian
+	elif isinstance(t0,cftime.DatetimeNoLeap):
+		cls = cftime.DatetimeNoLeap
+	elif isinstance(t0,cftime.Datetime360Day):
+		cls = cftime.Datetime360Day
+	elif isinstance(t0,dt.datetime):
+		cls = dt.datetime
+	else:
+		raise Exception(f"Unknow calendar: t0 = {t0}, type(t0) = {type(t0)}")
+	
+#	t0 = str(t0)
+#	year,month,day = [int(s) for s in t0[:10].split("-")]
+#	t0   = cls( year , month , day )
+#	dtime = [ t0 + dt.timedelta(days = i) for i in range(len(time))]
+	dtime = [ cls(*tuple([int(s) for s in str(t)[:10].split("-")])) for t in time ]
+	
+	return dtime
+##}}}
+
+def time_match( sub , ens ):##{{{
+	
+	sub_wh = delete_hour_from_time_axis(sub)
+	ens_wh = delete_hour_from_time_axis(ens)
+	
+	units    = "days since " + str(ens_wh[0])[:10]
+	
+	num_sub_wh = cftime.date2num( sub_wh , units )
+	num_ens_wh = cftime.date2num( ens_wh , units )
+	
+	t0,t1 = num_ens_wh[:2]
+	idx   = np.array( np.ceil( (num_sub_wh - t0) / (t1 - t0) ) , int ).tolist()
+	
+	return idx
+##}}}
+
+## build_reference ##{{{
+def build_reference( method : str ):
+	"""
+	XSBCK.build_reference
+	=====================
+	Function used to build a string of the reference article of the method.
+	
+	Arguments
+	---------
+	method:
+		str
+	
+	Returns
+	-------
+	str
+	"""
+	
+	ref = ""
+	if "CDFt" in method:
+		ref = "Michelangeli, P.-A., Vrac, M., and Loukos, H.: Probabilistic downscaling approaches: Application to wind cumulative distribution functions, Geophys. Res. Lett., 36, L11708, doi:10.1029/2009GL038401, 2009."
+	
+	if "R2D2" in method:
+		ref = "Vrac, M. et S. Thao (2020). “R2 D2 v2.0 : accounting for temporal dependences in multivariate bias correction via analogue rank resampling”. In : Geosci. Model Dev. 13.11, p. 5367-5387. doi :10.5194/gmd-13-5367-2020."
+	
+	return ref
+##}}}
+
 ## Classes
 ##########
 
-class SizeOf:
+class SizeOf:##{{{
 	"""
 	XSBCK.SizeOf
 	============
@@ -411,4 +490,6 @@ class SizeOf:
 	
 	##}}}
 	
+##}}}
+
 
