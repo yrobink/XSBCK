@@ -23,79 +23,87 @@
 from __future__ import annotations
 
 import sys
-if sys.version_info >= (3, 11):
-	from enum import StrEnum
-else:
-	from enum import Enum as StrEnum
-
 import os
+import inspect
 import argparse
 import tempfile
 import logging
 import datetime as dt
 import psutil
-
-from dataclasses import dataclass, field
-from pathlib import Path
+import dataclasses
 
 import dask
 import distributed
+
+import SBCK as bc
+import SBCK.ppp as bcp
+
 from .__utils import SizeOf
 from .__exceptions  import AbortForHelpException
+
 
 
 ###############
 ## Variables ##
 ###############
 
-class BCMethod(StrEnum):
-	IdBC = "IdBC"
-	CDFt = "CDFt"
-	R2D2 = "R2D2"
-	dOTC = "dOTC"
+#if sys.version_info >= (3, 11):
+#	from enum import StrEnum
+#else:
+#	from enum import Enum as StrEnum
+#class BCMethod(StrEnum):
+#	IdBC = "IdBC"
+#	CDFt = "CDFt"
+#	R2D2 = "R2D2"
+#	dOTC = "dOTC"
 
 bcMethods = ["IdBC","CDFt","R2D2","dOTC"]
 
 
 
-@dataclass
+@dataclasses.dataclass
 class XSBCKParams:
-	
-	## TODO:
-	## input_reference      : list[Path] | None = None
-	## input_biased         : list[Path] | None = None
-	## output_dir           : Path | None       = None
 	
 	abort                : bool               = False
 	error                : Exception | None   = None
 	help                 : bool               = False
 	log                  : tuple[str,str|None] = ("WARNING",None)
+	
 	input_reference      : list[str] | None   = None
 	input_biased         : list[str] | None   = None
 	output_dir           : str | None         = None
-	method               : str | None         = None
-	method_kwargs        : str | None         = None
+	time_axis            : str                = "time"
+	
 	n_workers            : int                = 1
 	threads_per_worker   : int                = 1
 	memory_per_worker    : str                = "auto"
 	frac_memory_per_array: float              = 0.2
 	total_memory         : str                = "auto"
+	client               : distributed.client.Client | None = None
+	disable_dask         : bool               = False
+	chunks               : int | None         = -1
+	
 	tmp_base             : str | None         = None
 	tmp_gen              : tempfile.TemporaryDirectory | None = None
 	tmp                  : str | None         = None
 	tmp_gen_dask         : tempfile.TemporaryDirectory | None = None
 	tmp_dask             : str | None         = None
+	
 	window               : tuple[int,int,int] = (5,10,5)
-	chunks               : int | None         = -1
 	calibration          : tuple[str,str]     = ("1976","2005")
-	disable_dask         : bool               = False
 	cvarsX               : str | None         = None
 	cvarsY               : str | None         = None
 	cvarsZ               : str | None         = None
 	start_year           : str | None         = None
 	end_year             : str | None         = None
+	
+	method               : str | None         = None
+	method_kwargs        : str | None         = None
 	ppp                  : list[str]          = None
-	client               : distributed.client.Client | None = None
+	bc_n_kwargs          : dict | None        = None
+	bc_s_kwargs          : dict | None        = None
+	pipe                 : list | None        = None
+	pipe_kwargs          : list | None        = None
 	
 	def init_from_user_input( self , *argv ):##{{{
 		
@@ -123,6 +131,7 @@ class XSBCKParams:
 		parser.add_argument( "--cvarsZ" , default = None )
 		parser.add_argument( "--start-year" , default = None )
 		parser.add_argument( "--end-year"   , default = None )
+		parser.add_argument( "--time-axis"   , default = "time" )
 		parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
 		
 		## Transform in dict
@@ -218,6 +227,146 @@ class XSBCKParams:
 		self.client.close()
 		del self.client
 		self.client = None
+	##}}}
+	
+	def _init_ppp(self):##{{{
+		lppps = self.ppp
+		
+		## Init
+		pipe        = []
+		pipe_kwargs = []
+		
+		if lppps is None:
+			return pipe,pipe_kwargs
+		
+		## Identify columns
+		dcols = { cvar : [self.cvarsZ.index(cvar)] for cvar in self.cvarsZ }
+		
+		## Explore SBCK.ppp
+		ppp_avail = [clsname for clsname in dir(bcp) if clsname.startswith("PPP") ]
+		
+		## Loop on ppp
+		for i in range(len(lppps)):
+			
+			## Find cvar and list of ppp
+			cvar,_,ppps_str = lppps[i].partition(",")
+			
+			## Split with ',', and remerge (e.g. 'A[B=2,C=3],K' => ['A[B=2,C=3]','K'] and not ['A[B=2','C=3]','K']
+			split = ppps_str.split(",")
+			lppp  = []
+			while len(split) > 0:
+				
+				if "[" in split[0]:
+					if "]" in split[0]:
+						lppp.append(split[0])
+						del split[0]
+					else:
+						for j in range(len(split)):
+							if "]" in split[j]:
+								break
+						lppp.append( ",".join(split[:(j+1)]) )
+						split = split[(j+1):]
+				else:
+					lppp.append(split[0])
+					del split[0]
+			
+			## Loop on ppp
+			for ppp in lppp:
+				
+				## Extract name / parameters
+				if "[" in ppp:
+					p_name,p_param = ppp.split("[")
+					p_param = p_param.split("]")[0].split(",")
+				else:
+					p_name  = ppp
+					p_param = []
+				
+				## Find the true name
+				if p_name in ppp_avail:
+					pass
+				elif f"PPP{p_name}" in ppp_avail:
+					p_name = f"PPP{p_name}"
+				elif f"{p_name}Link" in ppp_avail:
+					p_name = f"{p_name}Link"
+				elif f"PPP{p_name}Link" in ppp_avail:
+					p_name = f"PPP{p_name}Link"
+				else:
+					raise Exception(f"Unknow ppp {p_name}")
+				
+				## Define the class, and read the signature
+				cls     = getattr(bcp,p_name)
+				insp    = inspect.getfullargspec(cls)
+				pkwargs = insp.kwonlydefaults
+				
+				## Special case, the cols parameter
+				if "cols" in pkwargs and cvar in self.cvarsZ:
+					pkwargs["cols"] = dcols[cvar]
+				
+				## And others parameters
+				for p in p_param:
+					key,val = p.split("=")
+					if key in insp.annotations:
+						pkwargs[key] = insp.annotations[key](val)
+					else:
+						pkwargs[key] = val
+						
+						## Special case, val is a list (as sum) of cvar
+						if len(set(val.split("+")) & set(self.cvarsZ)) > 0:
+							pkwargs[key] = []
+							for v in val.split("+"):
+								if not v in dcols:
+									raise Exception(f"Unknow '{v}' as parameter for the ppp {p_name}")
+								pkwargs[key] = pkwargs[key] + dcols[v]
+				
+				## Append
+				pipe.append(cls)
+				pipe_kwargs.append(pkwargs)
+		
+		return pipe,pipe_kwargs
+	##}}}
+	
+	def init_BC_strategy(self):##{{{
+		
+		bc_method = bcp.PrePostProcessing
+		
+		## Find method kwargs
+		dkwd = {}
+		if self.method_kwargs is not None:
+			dkwd = { k : v for (k,v) in [ kv.split("=") for kv in self.method_kwargs.split(",")] }
+		
+		## The method
+		if "IdBC" in self.method:
+			bc_method_n_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+			bc_method_s_kwargs = { "bc_method" : bc.IdBC , "bc_method_kwargs" : {} }
+		if "CDFt" in self.method:
+			bc_method_n_kwargs = { "bc_method" : bc.CDFt , "bc_method_kwargs" : {} }
+			bc_method_s_kwargs = { "bc_method" : bc.QM   , "bc_method_kwargs" : {} }
+		if "dOTC" in self.method:
+			bc_method_n_kwargs = { "bc_method" : bc.dOTC , "bc_method_kwargs" : {} }
+			bc_method_s_kwargs = { "bc_method" : bc.OTC  , "bc_method_kwargs" : {} }
+		if "R2D2" in self.method:
+			col_cond   = [0]
+			if "col_cond" in dkwd:
+				col_cond = [self.cvarsZ.index(cvar) for cvar in dkwd["col_cond"].split("+")]
+			lag_keep   = int(self.method.split("-")[-1][:-1]) + 1
+			lag_search = 2 * lag_keep
+			bcmkwargs  = { "col_cond" : [0] , "lag_search" : lag_search , "lag_keep" : lag_keep , "reverse" : True }
+			bc_method_n_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.CDFt } }
+			bc_method_s_kwargs = { "bc_method" : bc.AR2D2 , "bc_method_kwargs" : { **bcmkwargs , "bc_method" : bc.QM   } }
+		
+		## The pipe
+		pipe,pipe_kwargs = self._init_ppp()
+		
+		## Global arguments
+		bc_n_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_n_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : lambda X: np.any(np.isfinite(X)) }
+		bc_s_kwargs = { "bc_method" : bc_method , "bc_method_kwargs" : bc_method_s_kwargs , "pipe" : pipe , "pipe_kwargs" : pipe_kwargs , "checkf" : lambda X: np.any(np.isfinite(X)) }
+		
+		## Add to the class
+		self.bc_n_kwargs = bc_n_kwargs
+		self.bc_s_kwargs = bc_s_kwargs
+		self.pipe        = pipe
+		self.pipe_kwargs = pipe_kwargs
+		
 	##}}}
 	
 	def check( self ): ##{{{
@@ -326,5 +475,6 @@ class XSBCKParams:
 		return self.__dict__.get(key)
 	##}}}
 	
+
 xsbckParams = XSBCKParams()
 
