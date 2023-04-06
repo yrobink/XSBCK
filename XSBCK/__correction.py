@@ -23,6 +23,7 @@
 import sys
 import os
 import gc
+import warnings
 import logging
 import datetime as dt
 
@@ -274,7 +275,7 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 		## dim names
 		input_core_dims  = [("timeY0" ,"cvar"),("timeX0","cvar"),("timeX1f","cvar"),("timeX1p","cvar")]
 		output_core_dims = [("timeX1p","cvar")]
-		bc_ufunc_kwargs  = { "cls" : bcp.PrePostProcessing , **bc_n_kwargs }
+		bc_ufunc_kwargs  = { "cls" : bcp.PPPIgnoreWarnings , **bc_n_kwargs }
 		
 		## Correction
 		Z1 = xr.concat(
@@ -304,7 +305,7 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 	
 	input_core_dims  = [("timeY0","cvar"),("timeX0","cvar")]
 	output_core_dims = [("timeX0","cvar")]
-	bc_ufunc_kwargs  = { "cls" : bcp.PrePostProcessing , **bc_s_kwargs }
+	bc_ufunc_kwargs  = { "cls" : bcp.PPPIgnoreWarnings , **bc_s_kwargs }
 	
 	Z0 = xr.concat(
 	        [ xr.apply_ufunc( sbck_s_ufunc , Y0.groupby("timeY0.month")[m] ,
