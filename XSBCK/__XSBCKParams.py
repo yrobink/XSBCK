@@ -401,7 +401,7 @@ class XSBCKParams:
 				self.memory_per_worker = self.total_memory // self.n_workers
 			else:
 				self.memory_per_worker = SizeOf(self.memory_per_worker)
-				self.total_memory      = self.total_memory * self.n_workers
+				self.total_memory      = self.memory_per_worker * self.n_workers
 			
 			## Test if the method is given
 			if '[' in self.method:
