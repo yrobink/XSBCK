@@ -288,13 +288,27 @@ def save_data( zX : XZarr , zZ : XZarr ):
 				oncfile.setncattr( "bc_pkgs_versions" , ", ".join( [f"XSBCK:{version}"] + [f"{name}:{pkg.__version__}" for name,pkg in zip(["SBCK","numpy","xarray","dask","distributed","zarr","netCDF4"],[SBCK,np,xr,dask,distributed,zarr,netCDF4]) ] ) )
 				
 				## Start with dimensions
-				dims   = [d for d in incfile.dimensions if not d == time_axis ]
-				ncdims = { d : oncfile.createDimension( d  , incfile.dimensions[d].size )  for d in dims }
-				ncdims[time_axis] = oncfile.createDimension( time_axis  , None )
+				dims   = [d for d in incfile.dimensions]
+				ncdims = { d : oncfile.createDimension( d  , incfile.dimensions[d].size )  for d in dims if not d == time_axis }
+				if incfile.dimensions[time_axis] in [None,0]: ## Unlimited dimensions
+					ncdims[time_axis] = oncfile.createDimension( d  , None )
+				else:
+					ncdims[time_axis] = oncfile.createDimension( time_axis  , o_time.size )
 				
 				## Define variables of dimensions
-				ncv_dims = { d : oncfile.createVariable( d , incfile.variables[d].dtype , (d,)  , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[d].chunking() ) for d in dims if d in incfile.variables }
-				ncv_dims[time_axis] = oncfile.createVariable( time_axis , incfile.variables[time_axis].dtype , (time_axis,)  , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = (1,) )
+				ncv_dims = {}
+				for d in dims:
+					if not d in incfile.variables:
+						continue
+					chk    = incfile.variables[d].chunking()
+					params = { "shuffle" : False }
+					if chk == "contiguous":
+						params["contiguous"] = True
+					else:
+						params["compression"] = "zlib"
+						params["complevel"]   = 5
+						params["chunksizes"]  = chk
+					ncv_dims[d] = oncfile.createVariable( d , incfile.variables[d].dtype , (d,)  , **params )
 				
 				## Copy attributes of the dimensions
 				for d in ncv_dims:
@@ -306,11 +320,12 @@ def save_data( zX : XZarr , zZ : XZarr ):
 				
 				## And fill dimensions (except time_axis)
 				for d in list(set(dims) & set([k for k in ncv_dims])):
+					if d == time_axis:
+						continue
 					ncv_dims[d][:] = incfile.variables[d][:]
 				
 				## Now fill time_axis, and add to list of dimensions
 				ncv_dims[time_axis][:] = cftime.date2num( o_time , incfile.variables[time_axis].units , incfile.variables[time_axis].calendar )
-				dims.append(time_axis)
 				
 				## Continue with all variables, except the "main" variable
 				variables = [v for v in incfile.variables if v not in dims + [cvarX]]
@@ -318,7 +333,15 @@ def save_data( zX : XZarr , zZ : XZarr ):
 				for v in variables:
 					
 					## Create the variable
-					ncvars[v] = oncfile.createVariable( v , incfile.variables[v].dtype , incfile.variables[v].dimensions , shuffle = False , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[v].chunking() )
+					chk    = incfile.variables[v].chunking()
+					params = { "shuffle" : False }
+					if chk == "contiguous":
+						params["contiguous"] = True
+					else:
+						params["compression"] = "zlib"
+						params["complevel"]   = 5
+						params["chunksizes"]  = chk
+					ncvars[v] = oncfile.createVariable( v , incfile.variables[v].dtype , incfile.variables[v].dimensions , **params )
 					
 					## Copy attributes
 					for name in incfile.variables[v].ncattrs():
@@ -355,10 +378,14 @@ def save_data( zX : XZarr , zZ : XZarr ):
 				
 				## Create the main variable
 				S = SizeOf( f"{np.prod(incfile.variables[cvarX].shape) * (np.finfo(incfile.variables[cvarX].dtype).bits // SizeOf('1o').bits_per_byte)}o" )
-				if S < "5Go":
-					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value , compression = "zlib" , complevel = 5 , chunksizes = incfile.variables[cvarX].chunking() )
-				else:
-					ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , shuffle = False , fill_value = fill_value )
+				params = { "shuffle" : False , "fill_value" : fill_value }
+				if incfile.variables[cvarX].chunking() == "contiguous":
+					params["contiguous"] = True
+				elif S < "5Go":
+					params["compression"] = "zlib"
+					params["complevel"]   = 5
+					params["chunksizes"]  = incfile.variables[cvarX].chunking()
+				ncvar = oncfile.createVariable( cvarZ , incfile.variables[cvarX].dtype , incfile.variables[cvarX].dimensions , **params )
 				if missing_value is not None:
 					ncvar.setncattr( "missing_value" , missing_value )
 				
