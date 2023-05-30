@@ -1,29 +1,97 @@
 
 # XSBCK: Executable SBCK
 
-Currently in pre-pre-pre alpha version, so don't use. Ths goal is to have a command like this:
+## What is XSBCK ?
+
+XSBCK is a command line interface to SBCK, to correct very large dataset. XSBCK
+is designed to work:
+- On a personnal computer,
+- On a cluster or supercomputer.
+
+XSBCK has been tested until a global correction (the entire world by 0.25°,
+between 1850 and 2100), on a 16 cores and 32GB of RAMs (~3 days in this case).
+
+
+## How to install it ?
+
+Start by install all dependencies:
+- numpy
+- scipy
+- xarray
+- netCDF4(>=1.6.0)
+- cftime
+- dask(>=2022.11.0)
+- zarr
+- SBCK(>=1.0.0)
+
+The [SBCK](https://github.com/yrobink/SBCK-python) dependency can be installed
+from [sources](https://github.com/yrobink/SBCK-python) or from
+[PyPI](https://pypi.org/project/SBCK):
 
 ~~~bash
-xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ --method R2D2-L-NV-2L --n-workers 40 --threads-per-worker 1 --memory 4GB --window 5,10,5
+pip3 install SBCK
 ~~~
 
-where:
+You can now install XSBCK from PyPI:
 
-- `--log` enable the log
-- `-iref` is a list of reference files for correction
-- `-ibias` is a list of biased files to correct
-- `-odir` output directory for correction
-- `--method` the method used
-- `--n-workers` numbers of CPU
-- `--threads-per-worker` Number of threads per worker
-- `--memory` Memory per worker
-- `--window` The size of moving window. `5,10,5` corresponds to a window of length 5+10+5 years for the fit, and the central 10 years for the predict.
+~~~bash
+pip3 install XSBCK
+~~~
 
-To use it currently, start by read the documentation:
+or from sources:
+
+~~~bash
+git clone https://github.com/yrobink/XSBCK.git
+cd XSBCK
+pip3 install .
+~~~
+
+
+## How to use it ?
+
+Although coded in python, XSBCK is a command line tools. The first step is
+(obviously) to read the documentation:
 
 ~~~bash
 xsbck --help
 ~~~
+
+In a nutshell, the following command:
+
+
+~~~bash
+xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ/\\
+   --method CDFt\\
+   --n-workers 5 --threads-per-worker 2\\
+   --memory-per-worker 2GB\\
+   --window 5,10,5\\
+   --cvarsX tas,tasmin,tasmax,pr\\
+   --cvarsY tas,tasmin,tasmax,prtot\\
+   --cvarsZ tas,tasmin,tasmax,prtot\\
+   --ppp prtot,LogLin,SSR\\
+   --ppp '_all_,PreserveOrder[cols=tasminAdjust+tasAdjust+tasmaxAdjust]'\
+   --ppp '_all_,NotFiniteAnalog[analog_var=tas+prtot,threshold=0.05]'
+~~~
+
+corrects all the biased file in the folder `$ipathX` with respect to the refence
+stored in the folder `$ipathY`. Corrections are save in the folder `$opathZ`.
+In addition:
+
+- `--log` enable the log
+- `--method` the method used
+- `--n-workers` numbers of CPU
+- `--threads-per-worker` Number of threads per worker
+- `--memory-per-worker` Memory per worker
+- `--window` The size of moving window. `5,10,5` corresponds to a window of length 5+10+5 years for the fit, and the central 10 years for the predict.
+- And read the doc for others arguments.
+
+
+## How to cite it ?
+
+If you produced and published some corrected dataset with XSBCK, consider to
+cite it with the following DOI:
+- SBCK: [DOI:223192066](https://zenodo.org/badge/latestdoi/223192066)
+- XSBCK: TODO
 
 ## License
 

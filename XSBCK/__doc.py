@@ -110,13 +110,13 @@ Examples
 xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ/\\
    --method CDFt\\
    --n-workers 5 --threads-per-worker 2\\
-   --memory 2GB\\
+   --memory-per-worker 2GB\\
    --window 5,10,5\\
    --cvarsX tas,tasmin,tasmax,pr\\
    --cvarsY tas,tasmin,tasmax,prtot\\
    --cvarsZ tas,tasmin,tasmax,prtot\\
    --ppp prtot,LogLin,SSR\\
-   --ppp '_all_,PreserveOrder[cols=tasminAdjust+tasAdjust+tasmaxAdjust]'\
+   --ppp '_all_,PreserveOrder[cols=tasminAdjust+tasAdjust+tasmaxAdjust]'\\
    --ppp '_all_,NotFiniteAnalog[analog_var=tas+prtot,threshold=0.05]'
 
 
