@@ -115,27 +115,31 @@ class XSBCKParams:
 		
 		parser.add_argument( "-h" , "--help" , action = "store_const" , const = True , default = False )
 		parser.add_argument( "--log" , nargs = '*' , default = ("WARNING",None) )
+		
 		parser.add_argument( "--input-reference"  , "-iref"  , "-iY" , nargs = '+' )
 		parser.add_argument( "--input-biased"     , "-ibias" , "-iX" , nargs = '+' )
 		parser.add_argument( "--output-dir"       , "-odir"  , "-oZ" , nargs = '?' )
+		parser.add_argument( "--tmp"              , default = None )
+		
 		parser.add_argument( "--method" , "-m" )
-		parser.add_argument( "--n-workers"              , default = 1 , type = int )
-		parser.add_argument( "--threads-per-worker"     , default = 1 , type = int )
-		parser.add_argument( "--memory-per-worker"      , default = "auto" )
-		parser.add_argument( "--frac-memory-per-array"  , default = 0.2 , type = float )
-		parser.add_argument( "--total-memory"       , default = "auto" )
-		parser.add_argument( "--tmp"         , default = None )
-		parser.add_argument( "--window"      , default = (5,10,5) )
-		parser.add_argument( "--chunks"      , default = -1 )
-		parser.add_argument( "--calibration" , default = ("1976","2005") )
-		parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
+		parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
+		
 		parser.add_argument( "--cvarsX" , default = None )
 		parser.add_argument( "--cvarsY" , default = None )
 		parser.add_argument( "--cvarsZ" , default = None )
-		parser.add_argument( "--start-year" , default = None )
-		parser.add_argument( "--end-year"   , default = None )
+		
+		parser.add_argument( "--window"      , default = (5,10,5) )
+		parser.add_argument( "--calibration" , default = ("1976","2005") )
+		parser.add_argument( "--start-year"  , default = None )
+		parser.add_argument( "--end-year"    , default = None )
 		parser.add_argument( "--time-axis"   , default = "time" )
-		parser.add_argument( "--ppp" , nargs = "+" , action = "extend" )
+		
+		parser.add_argument( "--n-workers"              , default = 1 , type = int )
+		parser.add_argument( "--threads-per-worker"     , default = 1 , type = int )
+		parser.add_argument( "--memory-per-worker"      , default = "auto" )
+		parser.add_argument( "--frac-memory-per-array"  , default = 0.15 , type = float )
+		parser.add_argument( "--total-memory"           , default = "auto" )
+		parser.add_argument( "--disable-dask" , action = "store_const" , const = True , default = False )
 		
 		## Transform in dict
 		kwargs = vars(parser.parse_args(argv))

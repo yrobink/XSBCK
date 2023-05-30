@@ -41,22 +41,49 @@ XSBCK ({})
 
 Input parameters
 ----------------
+--help
+    Ask to see the documentation
 --log [loglevel,logfile]
     Set the log level, default is 'warning'. If '--log' is passed without
     arguments, 'debug' is used. The default output is the console, and the
     second argument is a file to redirect the logs.
---help
-    Ask to see the documentation
+
 --input-reference, -iref, -iY
     A list of netcdf input files, as reference
 --input-biased, -ibias, -iX
     A list of netcdf input files, as model to correct
 --output-dir, -odir, -oZ
     A path to save the corrected data. The name of input-biased is used.
+--tmp [str, default is tempfile.gettempdir()]
+    Base path to build a random temporary folder, used to store temporary data.
+    Note that the disk containing this folder must be large enough to store
+    biased, reference data and correction in an uncompressed zarr file.
+
 --method
-    Bias correction method. Arguments can be passed in []. Currently, for
-    R2D2 you can set the conditionning columns with, e.g.
-    `R2D2[col_cond=tas+tasmin+tasmax]`
+    Bias correction method. See methods section.
+--ppp
+    A list of PrePostProcessing methods. See ppp section.
+
+--cvarsX
+    Model climate variables, in the form var0,var1,var2,...
+--cvarsY
+    Reference climate variables, in the form var0,var1,var2,...
+--cvarsZ
+    Name of output variables, in the form var0,var1,var2,... If not given,
+    cvarsX is used.
+
+--window [w_left,w_predict,w_right, default=5,10,5]
+    The moving window for the correction: w_left + w_predict + w_right is the
+    fit window, whereas w_predict is the correction part.
+--calibration [default=1976/2005]
+    Calibration period, in the form 'year_start/year_end'.
+--start-year [default=First year of the input data]
+    Starting year for the correction.
+--end-year [default=Last year of the input data]
+    End year for the correction. Note that if the window is larger than
+    'end-year - start-year', a larger period is corrected, but just the period
+    between start and end year is saved.
+
 --n-workers [int]
     CPU numbers
 --threads-per-worker [int]
@@ -68,38 +95,12 @@ Input parameters
     memory:
      * The calibration period, for reference and biased data,
      * The projection period, for biased data and corrected data
-    By default, this parameter is 0.2 = 20%, i.e. at most 4*20% = 80% of the
-    memory is used to store data, and 20% is used for intermediate operations.
+    By default, this parameter is 0.15 = 15%, i.e. at most 4*15% = 60% of the
+    memory is used to store data, and 40% is used for intermediate operations.
     If a memory error occurs, try to decrease this parameter.
 --total-memory
     Total available memory, used if '--memory-per-worker' is 'auto' and
     '--total-memory' is not 'auto'
---tmp [str, default is tempfile.gettempdir()]
-    Base path to build a random temporary folder.
---window [w_left,w_predict,w_right, default=5,10,5]
-    The moving window for the correction: w_left + w_predict + w_right is the
-    fit window, whereas w_predict is the correction part.
---chunks [chunk_lat,chunk_lon]
-    Spatial chunk of the dataset. If not given, default value is:
-    chunk_lat = int(nlat / sqrt(n_threads))
-    chunk_lon = int(nlon / sqrt(n_threads))
---calibration [default=1976/2005]
-    Calibration period, in the form 'year_start/year_end'.
---start-year [default=First year of the input data]
-    Starting year for the correction.
---end-year [default=Last year of the input data]
-    End year for the correction. Note that if the window is larger than
-    'end-year - start-year', a larger period is corrected, but just the period
-    between start and end year is saved.
---cvarsX
-    Model climate variables, in the form var0,var1,var2,...
---cvarsY
-    Reference climate variables, in the form var0,var1,var2,...
---cvarsZ
-    Name of output variables, in the form var0,var1,var2,... If not given,
-    cvarsX is used.
---ppp
-    A list of PrePostProcessing methods.
 --disable-dask
     Use this option to disable the dask client.
 
@@ -107,16 +108,36 @@ Input parameters
 Examples
 --------
 xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ/\\
-   --method R2D2-L-NV-2L[col_cond=tas]\\
+   --method CDFt\\
    --n-workers 5 --threads-per-worker 2\\
    --memory 2GB\\
-   --window 5,50,5\\
+   --window 5,10,5\\
    --cvarsX tas,tasmin,tasmax,pr\\
    --cvarsY tas,tasmin,tasmax,prtot\\
    --cvarsZ tas,tasmin,tasmax,prtot\\
-   --ppp '_all_,LogLin[cols=prtot+tasmin+tasmax]'\\
-   --ppp prtot,SSR\\
-   --ppp '_all_,DiffRef[ref=tas,upper=tasmax,lower=tasmin],NotFiniteAnalog[analog_var=tas+prtot,threshold=0.05]'
+   --ppp prtot,LogLin,SSR\\
+   --ppp '_all_,PreserveOrder[cols=tasminAdjust+tasAdjust+tasmaxAdjust]'\
+   --ppp '_all_,NotFiniteAnalog[analog_var=tas+prtot,threshold=0.05]'
+
+
+About methods
+-------------
+Note all bias correction method use the following nomenclature to describes its
+properties `METHOD-X-YV-ZL`, where X, Y and Z are:
+- X: possibles values are L (for Local) or S (for Spatial). In XSBCK, the
+  implementation of methods force the value L.
+- Y: 1 (univariate methid) or N (inter-variable method)
+- Z: Length of the temporal correction.
+Currently, two methods are available:
+- CDFt [1], a quantile mapping based method, univariate and non-stationary. If
+  you don't know what you do, use it. CDF-t is always CDFt-L-1V-0L.
+- R2D2 [2], a multivariate extention of CDF-t, reshuffling the ranks w.r.t. to
+  specifics variables to correct the inter-variables dependence. The
+  conditionning variables can be set with the argument 'col_cond'. This method
+  tends to degrate the spatial and temporal structure, so use it with caution.
+  R2D2 can takes into account of the temporal structure, you can enable this
+  option by modifying the lag. For example, R2R2-L-NV-2L[col_cond=tas] corrects
+  2 lags, i.e. by 3-days block.
 
 
 About ppp
@@ -127,7 +148,7 @@ use it in XSBCK with the following rule:
   arguments passed to xsbck.  For the behind example, before the correction,
   ppp are applied in this order:
   * NotFiniteAnalog
-  * DiffRef
+  * PerserveOrder
   * SSR
   * LogLin
   And in the reverse order after the correction.
@@ -135,13 +156,24 @@ use it in XSBCK with the following rule:
   * start with the variable to applied,
   * and after the ',', the list of SSR to apply is given.
   * You can use [] to pass arguments to the ppp,
-  * An you can use _all_ as variable to indicates the ppp applied to all
+  * An you can use _all_ as variable to indicate the ppp applied to all
   variables.
 In the example behind, we use the ppp 'NotFiniteAnalog' to replace invalid
 values in tasmin, tasmax by the closer analog defined by tas and prtot, if the
-proportion is lower < 5%. Then, tasmax is corrected as tasmax-tas, and tasmin
-as tas-tasmin. The SSR is used for prtot, and the LogLin function is applied to
-SSR(prtot), tasmax-tas and tas-tasmin (because they are non zero).
+proportion is lower < 5%. Then, if tasmax < tas after the correction, the two
+values are swapped (and the same for tasmin). The SSR is used for prtot, and
+the LogLin function is applied to SSR(prtot).
+
+
+References
+----------
+[1] Michelangeli, P.‐A. et al. (2009). “Probabilistic downscaling approaches :
+    Application to wind cumulative distribution functions”. In : Geophys. Res.
+    Lett. 36.11. DOI : 10.1029/2009GL038401.
+[2] Vrac, M. et S. Thao (2020). “R2D2 v2.0 : accounting for temporal dependences
+    in multivariate bias correction via analogue rank resampling”. In : Geosci.
+    Model Dev. 13.11, p. 5367‐5387. DOI : 10.5194/gmd-13-5367- 2020.
+
 
 License {}
 {}
@@ -156,4 +188,5 @@ Author(s) : {}
             long_description,
             license , "-" * ( 8 + len(license) ) , license_txt ,
             src_url , authors_doc )
+
 
