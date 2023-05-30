@@ -41,7 +41,7 @@ import SBCK.ppp as bcp
 
 from .__utils import SizeOf
 from .__exceptions  import AbortForHelpException
-
+from .__exceptions  import NoUserInputException
 
 
 ###############
@@ -106,6 +106,9 @@ class XSBCKParams:
 	pipe_kwargs          : list | None        = None
 	
 	def init_from_user_input( self , *argv ):##{{{
+		
+		if len(argv) == 0:
+			raise NoUserInputException("No arguments given, abort.\nRead the documentation with 'xsbck --help' ?")
 		
 		## Parser for user input
 		parser = argparse.ArgumentParser( add_help = False )

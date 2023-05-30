@@ -41,6 +41,7 @@ import zarr
 
 from .__XSBCKParams import xsbckParams
 from .__exceptions  import AbortForHelpException
+from .__exceptions  import NoUserInputException
 
 from .__logs import LINE
 from .__logs import log_start_end
@@ -120,7 +121,11 @@ def start_xsbck(*argv):##{{{
 	walltime0 = dt.datetime.utcnow()
 	
 	## Read input
-	xsbckParams.init_from_user_input(*argv)
+	try:
+		xsbckParams.init_from_user_input(*argv)
+	except NoUserInputException as e:
+		print(e)
+		return
 	
 	## Init logs
 	xsbckParams.init_logging()
