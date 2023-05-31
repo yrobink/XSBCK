@@ -90,8 +90,8 @@ In addition:
 
 If you produced and published some corrected dataset with XSBCK, consider to
 cite it with the following DOI:
-- SBCK: [DOI:516747799](https://zenodo.org/badge/latestdoi/516747799)
-- XSBCK: [DOI:547317351](https://zenodo.org/badge/latestdoi/547317351)
+- SBCK:  [DOI:10.5281/zenodo.7985160](https://doi.org/10.5281/zenodo.7985160)
+- XSBCK: [DOI:10.5281/zenodo.7985173](https://doi.org/10.5281/zenodo.7985173)
 
 
 
