@@ -120,6 +120,21 @@ xsbck --log -iref $ipathY/*.nc -ibias $ipathX/*.nc -odir $opathZ/\\
    --ppp '_all_,NotFiniteAnalog[analog_var=tas+prtot,threshold=0.05]'
 
 
+About netcdf files
+------------------
+- The input (for reference and biased data) netcdf files must follow the CF
+  convention, i.e. read:
+https://cfconventions.org/Data/cf-conventions/cf-conventions-1.10/cf-conventions.html
+- The output netcdf copy the names and metadata of the input biased files, and
+  add the following global attributes:
+    * bc_creation_date: bias correction date, iso format, UTC time
+    * bc_method: method used,
+    * bc_period_calibration: calibration period
+    * bc_window: the window,
+    * bc_reference: the reference if available
+    * bc_pkgs_versions: version of packages
+
+
 About methods
 -------------
 Note all bias correction method use the following nomenclature to describes its
