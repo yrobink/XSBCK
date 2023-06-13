@@ -290,8 +290,8 @@ def save_data( zX : XZarr , zZ : XZarr ):
 				## Start with dimensions
 				dims   = [d for d in incfile.dimensions]
 				ncdims = { d : oncfile.createDimension( d  , incfile.dimensions[d].size )  for d in dims if not d == time_axis }
-				if incfile.dimensions[time_axis] in [None,0]: ## Unlimited dimensions
-					ncdims[time_axis] = oncfile.createDimension( d  , None )
+				if incfile.dimensions[time_axis].isunlimited(): ## Unlimited dimensions
+					ncdims[time_axis] = oncfile.createDimension( time_axis  , None )
 				else:
 					ncdims[time_axis] = oncfile.createDimension( time_axis  , o_time.size )
 				
