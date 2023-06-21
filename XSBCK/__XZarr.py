@@ -32,6 +32,7 @@ import numpy as np
 import xarray as xr
 
 from .__utils import delete_hour_from_time_axis
+from .__utils import CalendarInfos
 from .__utils import time_match
 
 ## Init logging
@@ -53,117 +54,108 @@ class XZarr:
 	
 	def __init__( self , fzarr , persist = False ):##{{{
 		"""
-		XSBCK.XZarr.__init__
-		====================
+		HDAR.XZarr.__init__
+		===================
 		
 		Arguments
 		---------
 		fzarr:
 			The file used as zarr file
-		dX: [xarray.Dataset]
-			Data to copy in the zarr file. If None, a zero file is init with
-			the shape, dims and coords parameters
-		shape:
-			Only used if dX is None
-		dims:
-			Only used if dX is None
-		coords:
-			Only used if dX is None
-		chunks:
-			The chunk of the data
 		persist:
 			If False, the fzarr file is removed when the object is deleted.
-		cvars:
-			List of cvar
-		dtype:
-			The data type, default is float32
-		avail_spatial_mem:
-			Memory limit in octet of a single map (no time and variables). Used
-			to spatially cut the dataset
-		 
 		"""
-		
-#		self._fmatch = lambda a,b: [ b.index(x) if x in b else None for x in a ]
 		
 		self.fzarr   = fzarr
 		self.persist = persist
 		
 		self.zarr_chunks = None
-		self.dask_chunks = None
+		self.n_cpus      = None
 		
 		self.shape  = None
 		self.dims   = None
 		self.coords = None
-		self.dtime  = None
 		
 		self.dtype  = None
 		self.data   = None
 		self.ifiles = None
 	##}}}
 	
-	## @staticmethod.from_dataset ##{{{
-	
+	## @staticmethod.open_files ##{{{
 	@staticmethod
-	def from_dataset( fzarr , xdata , ifiles , xcvars , zcvars , dask_chunks , zarr_chunks , time_axis = "time" , persist = False ):
-		"""
-		@staticmethod
-		XSBCK.XZarr.from_dataset
-		========================
+	def open_files( fzarr , ifiles , cvars , avail_spatial_mem , time_axis = "time" , persist = False , n_cpus = -1 ):
 		
-		Arguments
-		---------
-		fzarr:
-			The file used as zarr file
-		xdata: [xarray.Dataset]
-			Data to copy in the zarr file.
-		ifiles:
-			List of files to read the data. We have:
-				xdata = xr.open_mfdataset(ifiles)
-			But data are read directly from ifiles with the netCDF4 engine
-		xcvars:
-			List of cvar from xdata
-		zcvars:
-			List of cvar in the zarr file, can be used to rename xcvars
-		dask_chunks:
-			The chunk of the data
-		zarr_chunks:
-			The chunk of the data
-		time_axis:
-			Name of the time axis, not really used currently, use 'time'
-		persist:
-			If False, the fzarr file is removed when the object is deleted.
-		 
-		"""
-		
-		## The file
+		## Init the xzarr
 		xzarr = XZarr( fzarr = fzarr , persist = persist )
+		xzarr.n_cpus = n_cpus
 		
-		## Init zarr chunks
-		time_chunk = 4 * 365 + 1
-		try:
-			if isinstance(xdata[time_axis].values[0],cftime.DatetimeNoLeap):
-				time_chunk = 365
-			if isinstance(xdata[time_axis].values[0],cftime.Datetime360Day):
-				time_chunk = 360
-		except:
-			pass
-		zarr_chunks = list(zarr_chunks)
-		zarr_chunks[0] = time_chunk
-		xzarr.zarr_chunks = zarr_chunks
+		## Loop on files to find parameters
+		time     = []
+		calendar = None
+		y        = None
+		x        = None
+		dtype    = "float32"
+		for ifile in ifiles:
+			
+			with netCDF4.Dataset( ifile , mode = "r" ) as ncfile:
+				
+				## Read the time axis
+				ccalendar = ncfile.variables[time_axis].getncattr("calendar")
+				units     = ncfile.variables[time_axis].getncattr("units")
+				ctime     = cftime.num2date( ncfile.variables[time_axis] , units = units , calendar = ccalendar )
+				
+				if calendar is None:
+					calendar = CalendarInfos( name = ccalendar )
+				
+				if not ccalendar in calendar.names:
+					raise Exception( f"Incoherent time axis, two calendars detected: '{calendar.name}' and '{ccalendar}'" )
+				
+				time = time + ctime.tolist()
+				
+				## Now check the variable
+				id_cvar = None
+				for cvar in cvars:
+					if cvar in ncfile.variables:
+						id_cvar = cvar
+				if id_cvar is None:
+					raise Exception( f"The file {ifile} do not contains any know variables " + "{}".format( ",".join(ncfile.variables) ) )
+				ncvar = ncfile.variables[id_cvar]
+				dtype = str(ncvar.datatype)
+				
+				## Spatial coords
+				id_y = np.array(ncfile.variables[ncvar.dimensions[1]])
+				id_x = np.array(ncfile.variables[ncvar.dimensions[2]])
+				
+				if y is None: y = id_y
+				if x is None: x = id_x
+				
+				if (not y.size == id_y.size) or (not x.size == id_x.size):
+					raise Exception( f"Incoherent spatial size: {ifile}" )
 		
-		## Init dask chunks
-		xzarr.dask_chunks = dask_chunks
+		time  = list(set(time))
+		time.sort()
+		dtime = delete_hour_from_time_axis(time)
+		dtime = list(set(time))
+		dtime.sort()
+		time  = xr.DataArray( dtime , dims = ["time"] , coords = [dtime] )
+		time_chunk = calendar.chunk
 		
-		## Init coordinates
-		xzarr.shape  = xdata[xcvars[0]].shape  + (len(xcvars),)
-		xzarr.dims   = xdata[xcvars[0]].dims   + ("cvar",)
-		xzarr.coords = [xdata[c] for c in xzarr.dims[:-1]] + [zcvars,]
-		xzarr.dtime  = delete_hour_from_time_axis(xzarr.coords[0])
-		dtime        = xzarr.dtime
-		xzarr.coords[0] = xr.DataArray( dtime , dims = [time_axis] , coords = { time_axis : dtime } )
+		## Spatial zarr chunks
+		avail_spatial_numb = int( avail_spatial_mem.o / (np.finfo(dtype).bits // avail_spatial_mem.bits_per_octet) )
+		ny     = y.size
+		nx     = x.size
+		zch_ny = max( int(ny / np.sqrt(avail_spatial_numb)) , 1 )
+		zch_nx = max( int(nx / np.sqrt(avail_spatial_numb)) , 1 )
 		
-		## And now build the zarr file
-		xzarr.dtype = xdata[xcvars[0]].dtype
+		## Set the total zarr chunks
+		xzarr.zarr_chunks = [ time_chunk , ny // zch_ny , nx // zch_nx , 1 ]
+		
+		## Init the dimensions and coordinates
+		xzarr.dtype  = dtype
+		xzarr.shape  = [time.size,y.size,x.size,len(cvars)]
+		xzarr.dims   = ["time","y","x","cvar"]
+		xzarr.coords = [time,y,x,cvars]
+		
+		## Init the zarr file
 		xzarr.data  = zarr.open( xzarr.fzarr , mode = "w" , shape = xzarr.shape , chunks = xzarr.zarr_chunks , dtype = xzarr.dtype )
 		
 		## And copy netcdf file to zarr file
@@ -172,19 +164,14 @@ class XZarr:
 			with netCDF4.Dataset( ifile , "r" ) as ncfile:
 				
 				## Find the cvar
-				for icvar,xcvar,zcvar in zip(range(len(zcvars)),xcvars,zcvars):
-					if xcvar in ncfile.variables:
+				for icvar,cvar in enumerate(cvars):
+					if cvar in ncfile.variables:
 						break
 				
 				## Time idx
-				itime     = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				itime     = delete_hour_from_time_axis( itime )
-				num_itime = cftime.date2num( itime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				num_time  = cftime.date2num( dtime , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
-				if not np.unique(np.diff(num_itime)).size == 1 or  not np.unique(np.diff(num_time )).size == 1:
-					raise Exception(f"Missing values or invalid time axis in the file {ifile}")
-				t0,t1 = num_time[:2]
-				idx   = np.array( np.ceil( (num_itime - t0) / (t1 - t0 ) ) , int ).tolist()
+				ftime = cftime.num2date( ncfile.variables[time_axis] , ncfile.variables[time_axis].units , ncfile.variables[time_axis].calendar )
+				ftime = delete_hour_from_time_axis(ftime)
+				idx   = time_match( ftime , time )
 				
 				## Now loop on zchunks
 				for zc in xzarr.iter_zchunks():
@@ -198,7 +185,7 @@ class XZarr:
 					## And loop on time chunk to limit memory used
 					for it in range(0,len(idx),time_chunk):
 						sel = (idx[it:(it+time_chunk)],slice(i0y,i1y),slice(i0x,i1x),icvar)
-						M   = ncfile.variables[xcvar][it:(it+time_chunk),i0y:i1y,i0x:i1x]
+						M   = ncfile.variables[cvar][it:(it+time_chunk),i0y:i1y,i0x:i1x]
 						
 						try:
 							M = np.where( ~M.mask , np.array(M) , np.nan )
@@ -217,12 +204,11 @@ class XZarr:
 		
 		## Copy the attributes
 		copy.zarr_chunks = list(self.zarr_chunks)
-		copy.dask_chunks = self.dask_chunks
+		copy.n_cpus      = self.n_cpus
 		
 		copy.shape  = list(self.shape)
 		copy.dims   = list(self.dims)
 		copy.coords = list(self.coords)
-		copy.dtime  = self.dtime
 		
 		copy.dtype  = self.dtype 
 		copy.ifiles = list(self.ifiles)
@@ -247,7 +233,7 @@ class XZarr:
 	
 	def clean(self):##{{{
 		"""
-		XSBCK.XZarr.clean
+		HDAR.XZarr.clean
 		=================
 		Remove the fzarr file
 		 
@@ -263,20 +249,25 @@ class XZarr:
 	
 	def __str__(self):##{{{
 		
+		size = SizeOf( n = int(np.prod(self.shape) * np.finfo(self.dtype).bits) , unit = "b" )
+		
 		out = []
-		out.append( "<XSBCK.XZarr>" )
+		out.append( "<HDAR.XZarr>" )
+		out.append( f"File: {self.fzarr}" )
 		out.append( "Dimensions: (" + ", ".join( [f"{d}: {s}" for d,s in zip(self.dims,self.shape)] ) + ")" )
-		out.append( f"zarr_chunks  : {self.zarr_chunks}" )
-		out.append( f"n_dask_chunks: {self.dask_chunks}" )
+		out.append( f"Size: {size}" )
+		out.append( f"Type: {self.dtype}" )
+		out.append( f"zarr_chunks: {self.zarr_chunks}" )
+		out.append( f"n_cpus: {self.n_cpus}" )
 		out.append( "Coordinates:" )
 		for d,coord in zip(self.dims,self.coords):
 			line = str(coord).split("\n")[-1]
 			if "*" in line:
 				out.append(line)
 			else:
-				C = " ".join(coord)
+				C = " ".join([str(x) for x in coord])
 				if len(C) > 24:
-					C = C[:11] + " ... " + C[-11:]
+					C = C.split(" ")[0] + " ... " + C.split(" ")[-1]
 				out.append( "  * {:{fill}{align}{n}}".format(d,fill=" ",align="<",n=9) + f"({d}) " + C )
 		
 		return "\n".join(out)
@@ -296,7 +287,7 @@ class XZarr:
 	
 	def sel_along_time( self , time , zc = None ):##{{{
 		"""
-		XSBCK.XZarr.sel_along_time
+		HDAR.XZarr.sel_along_time
 		==========================
 		
 		Arguments
@@ -304,7 +295,7 @@ class XZarr:
 		time:
 			The time values to extract
 		zc:
-			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			The chunk identifier, given by HDAR.XZarr.iter_zchunks. If None,
 			all spatial values are returned.
 		
 		Returns
@@ -318,12 +309,12 @@ class XZarr:
 		if zc is None:
 			sel    = (idx,slice(None),slice(None),slice(None))
 			coords = [self.time[idx]] + self.coords[1:]
-			if self.dask_chunks == -1:
+			if self.n_cpus < 2:
 				dask_chunks[self.dims[1]] = -1
 				dask_chunks[self.dims[2]] = -1
 			else:
-				dask_chunks[self.dims[1]] = int( self.shape[1] / np.sqrt(self.dask_chunks) )
-				dask_chunks[self.dims[2]] = int( self.shape[2] / np.sqrt(self.dask_chunks) )
+				dask_chunks[self.dims[1]] = int( self.shape[1] / np.sqrt(self.n_cpus) )
+				dask_chunks[self.dims[2]] = int( self.shape[2] / np.sqrt(self.n_cpus) )
 		else:
 			zc_y,zc_x = zc
 			i0y =  zc_y    * self.data.chunks[1]
@@ -332,12 +323,12 @@ class XZarr:
 			i1x = (zc_x+1) * self.data.chunks[2]
 			sel = (idx,slice(i0y,i1y,1),slice(i0x,i1x),slice(None))
 			coords = [self.time[idx]] + [self.coords[1][i0y:i1y]] + [self.coords[2][i0x:i1x]] + [self.coords[3]]
-			if self.dask_chunks == -1:
+			if self.n_cpus < 2:
 				dask_chunks[self.dims[1]] = -1
 				dask_chunks[self.dims[2]] = -1
 			else:
-				dask_chunks[self.dims[1]] = int( (i1y-i0y+1) / np.sqrt(self.dask_chunks) )
-				dask_chunks[self.dims[2]] = int( (i1x-i0x+1) / np.sqrt(self.dask_chunks) )
+				dask_chunks[self.dims[1]] = int( (i1y-i0y+1) / np.sqrt(self.n_cpus) )
+				dask_chunks[self.dims[2]] = int( (i1x-i0x+1) / np.sqrt(self.n_cpus) )
 		
 		X = xr.DataArray( self.data.get_orthogonal_selection(sel) ,
 		                  dims = self.dims ,
@@ -351,7 +342,7 @@ class XZarr:
 	
 	def sel_cvar_along_time( self , time , cvar , zc = None ):##{{{
 		"""
-		XSBCK.XZarr.sel_cvar_along_time
+		HDAR.XZarr.sel_cvar_along_time
 		===============================
 		
 		To select only on cvar
@@ -363,7 +354,7 @@ class XZarr:
 		cvar:
 			The climate variable selected
 		zc:
-			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			The chunk identifier, given by HDAR.XZarr.iter_zchunks. If None,
 			all spatial values are returned.
 		
 		Returns
@@ -403,7 +394,7 @@ class XZarr:
 	
 	def set_along_time( self , X , time = None , zc = None ):##{{{
 		"""
-		XSBCK.XZarr.set_along_time
+		HDAR.XZarr.set_along_time
 		==========================
 		
 		To set X at time values in the zarr file
@@ -415,16 +406,13 @@ class XZarr:
 		time:
 			The time values to set
 		zc:
-			The chunk identifier, given by XSBCK.XZarr.iter_zchunks. If None,
+			The chunk identifier, given by HDAR.XZarr.iter_zchunks. If None,
 			all spatial values are set.
 		 
 		"""
 		
-		time     = time if time is not None else X.time
-#		time_fmt = self.time.sel( time = time ).values.tolist() ## Ensure time and self.time have the save format
-#		if not type(time_fmt) is list: time_fmt = [time_fmt]
-#		idx      = self._fmatch( time_fmt , self.time.values.tolist() )
-		idx   = time_match( self.time.sel( time = time ) , self.time )
+		time = time if time is not None else X.time
+		idx  = time_match( self.time.sel( time = time ) , self.time )
 		
 		if zc is None:
 			sel    = (idx,slice(None),slice(None),slice(None))
@@ -449,4 +437,4 @@ class XZarr:
 	def cvars(self):
 		return self.coords[-1]
 	##}}}
-	
+
