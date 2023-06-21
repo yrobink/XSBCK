@@ -465,6 +465,17 @@ class XSBCKParams:
 			if not len(self.calibration) == 2:
 				raise Exception( f"Bad arguments for the calibration ({self.calibration})" )
 			
+			## Check the cvars
+			self.cvarsX = self.cvarsX.split(",")
+			self.cvarsY = self.cvarsY.split(",")
+			self.cvarsZ = self.cvarsZ.split(",")
+			
+			if not len(self.cvarsX) == len(self.cvarsY):
+				raise Exception( "Number of cvars incoherent between biased ({}) and reference ({}) data".format( ",".join(self.cvarsX) , ",".join(self.cvarsY) ) )
+			
+			if not len(self.cvarsZ) == len(self.cvarsX):
+				self.cvarsZ = [cvarX + "Adjust" for cvarX in self.cvarsX]
+			
 		except Exception as e:
 			self.abort = True
 			self.error = e
