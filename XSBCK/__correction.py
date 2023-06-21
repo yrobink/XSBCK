@@ -278,19 +278,21 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 		bc_ufunc_kwargs  = { "cls" : bcp.PPPIgnoreWarnings , **bc_n_kwargs }
 		
 		## Correction
-		Z1 = xr.concat(
-		        [ xr.apply_ufunc( sbck_ns_ufunc , Y0.groupby("timeY0.month")[m] ,
-		                                          X0.groupby("timeX0.month")[m] ,
-		                                          X1f.groupby("timeX1f.month")[m] ,
-		                                          X1p.groupby("timeX1p.month")[m] ,
-		                          input_core_dims  = input_core_dims ,
-		                          kwargs           = bc_ufunc_kwargs ,
-		                          output_core_dims = output_core_dims ,
-		                          output_dtypes    = X1p.dtype ,
-		                          vectorize        = True ,
-		                          dask             = "parallelized" ,
-		                          keep_attrs       = True ).rename( timeX1p = "time" ) for m in months] , dim = "time"
-		        ).compute().sortby("time").transpose(*zZ.dims)
+		with warnings.catch_warnings():
+			warnings.simplefilter("ignore")
+			Z1 = xr.concat(
+			        [ xr.apply_ufunc( sbck_ns_ufunc , Y0.groupby("timeY0.month")[m] ,
+			                                          X0.groupby("timeX0.month")[m] ,
+			                                          X1f.groupby("timeX1f.month")[m] ,
+			                                          X1p.groupby("timeX1p.month")[m] ,
+			                          input_core_dims  = input_core_dims ,
+			                          kwargs           = bc_ufunc_kwargs ,
+			                          output_core_dims = output_core_dims ,
+			                          output_dtypes    = X1p.dtype ,
+			                          vectorize        = True ,
+			                          dask             = "parallelized" ,
+			                          keep_attrs       = True ).rename( timeX1p = "time" ) for m in months] , dim = "time"
+			        ).compute().sortby("time").transpose(*zZ.dims)
 		
 		zZ.set_along_time( Z1 , zc = zc )
 		
@@ -307,17 +309,19 @@ def spatial_chunked_correction( zX , zY , zZ , zc ):
 	output_core_dims = [("timeX0","cvar")]
 	bc_ufunc_kwargs  = { "cls" : bcp.PPPIgnoreWarnings , **bc_s_kwargs }
 	
-	Z0 = xr.concat(
-	        [ xr.apply_ufunc( sbck_s_ufunc , Y0.groupby("timeY0.month")[m] ,
-	                                         X0.groupby("timeX0.month")[m] ,
-	                          input_core_dims  = input_core_dims ,
-	                          kwargs           = bc_ufunc_kwargs ,
-	                          output_core_dims = output_core_dims ,
-	                          output_dtypes    = X0.dtype ,
-	                          vectorize        = True ,
-	                          dask             = "parallelized" ,
-	                          keep_attrs       = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
-	        ).compute().sortby("time").transpose(*zZ.dims)
+	with warnings.catch_warnings():
+		warnings.simplefilter("ignore")
+		Z0 = xr.concat(
+		        [ xr.apply_ufunc( sbck_s_ufunc , Y0.groupby("timeY0.month")[m] ,
+		                                         X0.groupby("timeX0.month")[m] ,
+		                          input_core_dims  = input_core_dims ,
+		                          kwargs           = bc_ufunc_kwargs ,
+		                          output_core_dims = output_core_dims ,
+		                          output_dtypes    = X0.dtype ,
+		                          vectorize        = True ,
+		                          dask             = "parallelized" ,
+		                          keep_attrs       = True ).rename( timeX0 = "time" ) for m in months] , dim = "time"
+		        ).compute().sortby("time").transpose(*zZ.dims)
 	
 	zZ.set_along_time( Z0 , zc = zc )
 	del X0
