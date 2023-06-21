@@ -63,87 +63,16 @@ logger.addHandler(logging.NullHandler())
 #################################################
 
 ## load_data ##{{{
+
 @log_start_end(logger)
 def load_data():
-	"""
-	XSBCK.load_data
-	===============
-	Function used to read data and copy in a temporary zarr file
-	
-	Returns
-	-------
-	zX:
-		XZarr file of the biased dataset
-	zY:
-		XZarr file of the reference dataset
-	zZ:
-		XZarr file of the corrected dataset (empty)
-	"""
-	
-	##
-	time_axis = xsbckParams.time_axis
-	cvarsX = xsbckParams.cvarsX
-	cvarsY = xsbckParams.cvarsY
-	cvarsZ = xsbckParams.cvarsZ
-	
-	## Open with xarray to decode all variables and time axis
-	xX = xr.open_mfdataset( xsbckParams.input_biased    , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
-	xY = xr.open_mfdataset( xsbckParams.input_reference , data_vars = "minimal" , coords = "minimal" , compat = "override" , combine_attrs = "drop" )
-	
-	## Init cvars
-	logger.info("Check cvars")
-	if (cvarsX is not None and cvarsY is None) or (cvarsY is not None and cvarsX is None):
-		raise Exception( "If cvars is given for the ref (or the biased), cvars must be given for the biased (or the ref)" )
-	check_cvarsXY_is_same = False
-	if cvarsX is None:
-		cvarsX  = [key for key in xX.data_vars]
-		cvarsX.sort()
-		check_cvarsXY_is_same = True
-	else:
-		cvarsX = cvarsX.split(",")
-	if cvarsY is None:
-		cvarsY  = [key for key in xY.data_vars]
-		cvarsY.sort()
-		check_cvarsXY_is_same = True
-	else:
-		cvarsY = cvarsY.split(",")
-	if check_cvarsXY_is_same:
-		if ( not all([cvar in cvarsX for cvar in cvarsY]) ) or (not all([cvar in cvarsY for cvar in cvarsX])):
-			raise Exception( "Variables from ref or biased differs" )
-	if cvarsZ is None:
-		cvarsZ = cvarsX
-	else:
-		cvarsZ = cvarsZ.split(",")
-	
-	xsbckParams.cvarsX = cvarsX
-	xsbckParams.cvarsY = cvarsY
-	xsbckParams.cvarsZ = cvarsZ
-	
-	logger.info( f" * cvarsX: {cvarsX}" )
-	logger.info( f" * cvarsY: {cvarsY}" )
-	logger.info( f" * cvarsZ: {cvarsZ}" )
-	
-	for cvarX in cvarsX:
-		if cvarX not in xX:
-			raise Exception( f"Variable '{cvarX}' not in biased data" )
-	for cvarY in cvarsY:
-		if cvarY not in xY:
-			raise Exception( f"Variable '{cvarY}' not in reference data" )
-	
-	## Remove of the dataset all variables without time axis
-	keys_to_del = [key for key in xX.data_vars if time_axis not in xX[key].dims]
-	for key in keys_to_del:
-		del xX[key]
-	keys_to_del = [key for key in xY.data_vars if time_axis not in xY[key].dims]
-	for key in keys_to_del:
-		del xY[key]
 	
 	## Find spatial memory available
 	total_memory       = xsbckParams.total_memory.o
 	frac_mem_per_array = xsbckParams.frac_memory_per_array
 	max_mem_per_chunk  = SizeOf( n = int(frac_mem_per_array * total_memory) , unit = "o" )
 	max_time           = 365 * max( np.diff([int(s) for s in xsbckParams.calibration]) + 1 , sum(xsbckParams.window) )
-	max_cvar           = len(cvarsZ)
+	max_cvar           = max( [len(cvars) for cvars in [xsbckParams.cvarsX,xsbckParams.cvarsY,xsbckParams.cvarsZ]] )
 	avail_spatial_mem  = SizeOf( n = int( max_mem_per_chunk.o / ( max_time * max_cvar * (np.finfo('float32').bits // max_mem_per_chunk.bits_per_octet) ) ) , unit = "o" )
 	
 	logger.info( "Check memory:" )
@@ -152,44 +81,37 @@ def load_data():
 	logger.info( f" * Max cvar          : {max_cvar}" )
 	logger.info( f" * Avail Spat. Mem.  : {avail_spatial_mem}" )
 	
-	## Find chunks
-	dask_chunks = xsbckParams.chunks
-	if dask_chunks == -1:
-		dask_chunks = xsbckParams.n_workers * xsbckParams.threads_per_worker
+	n_cpus = xsbckParams.n_workers * xsbckParams.threads_per_worker
 	
-	ny = xX[xX[cvarsX[0]].dims[1]].size
-	nx = xX[xX[cvarsX[0]].dims[2]].size
-	avail_spatial_numb = int( avail_spatial_mem.o / (np.finfo(xX[cvarsX[0]].dtype).bits // max_mem_per_chunk.bits_per_octet) )
-	zch_ny = max( int(ny / np.sqrt(avail_spatial_numb)) , 1 )
-	zch_nx = max( int(nx / np.sqrt(avail_spatial_numb)) , 1 )
-	zarr_chunks = [ None , ny // zch_ny , nx // zch_nx , 1 ]
+	logger.info( "Transform netcdf in zarr files:" )
+	logger.info( " * Y..." )
+	zY = XZarr.open_files( fzarr = os.path.join( xsbckParams.tmp , "Y.zarr" ) , ifiles = xsbckParams.input_reference  , cvars = xsbckParams.cvarsY , avail_spatial_mem = avail_spatial_mem , n_cpus = n_cpus )
+	logger.info( f"   => shape : {zY.shape}" )
+	logger.info( f"   => zchunk: {zY.zarr_chunks}" )
 	
-	logger.info( "Chunks found:" )
-	logger.info( f" * dask_chunks: {dask_chunks}" )
-	logger.info( f" * zarr_chunks: {zarr_chunks}" )
+	logger.info( " * X..." )
+	zX = XZarr.open_files( fzarr = os.path.join( xsbckParams.tmp , "X.zarr" ) , ifiles = xsbckParams.input_biased     , cvars = xsbckParams.cvarsX , avail_spatial_mem = avail_spatial_mem , n_cpus = n_cpus )
+	logger.info( f"   => shape : {zX.shape}" )
+	logger.info( f"   => zchunk: {zX.zarr_chunks}" )
 	
-	## Now zarr file
-	logger.info( "Create biased zarr file..." )
-	zX = XZarr.from_dataset( os.path.join( xsbckParams.tmp , "X.zarr" ) , xX , ifiles = xsbckParams.input_biased    , xcvars = cvarsX , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
-	logger.info( "Create reference zarr file..." )
-	zY = XZarr.from_dataset( os.path.join( xsbckParams.tmp , "Y.zarr" ) , xY , ifiles = xsbckParams.input_reference , xcvars = cvarsY , zcvars = cvarsZ , dask_chunks = dask_chunks , zarr_chunks = zarr_chunks , time_axis = time_axis )
-	logger.info( "Create corrected (empty) zarr file..." )
-	zZ = zX.copy( os.path.join( xsbckParams.tmp , "Z.zarr" ) , np.nan )
+	logger.info( " * Zh..." )
+	zZ = zX.copy( fzarr = os.path.join( xsbckParams.tmp , "Z.zarr" ) )
+	logger.info( f"   => shape : {zZ.shape}" )
+	logger.info( f"   => zchunk: {zZ.zarr_chunks}" )
 	
-	logger.info( f"About biased data:" )
-	logger.info( f" * shape  : {str(zX.shape)}" )
-	logger.info( f" * zchunks: {str(zX.zarr_chunks)}" )
-	logger.info( f"About reference data:" )
-	logger.info( f" * shape  : {str(zY.shape)}" )
-	logger.info( f" * zchunks: {str(zY.zarr_chunks)}" )
+	## Rename all variables
+	zX.coords[-1] = xsbckParams.cvarsZ
+	zY.coords[-1] = xsbckParams.cvarsZ
+	zZ.coords[-1] = xsbckParams.cvarsZ
 	
-	## Free memory
-	del xX
-	del xY
-	gc.collect()
+	##
+	if xsbckParams.start_year is None:
+		xsbckParams.start_year = str(zZ.time.dt.year.values[0])
+	if xsbckParams.end_year is None:
+		xsbckParams.end_year = str(zZ.time.dt.year.values[-1])
 	
 	return zX,zY,zZ
-##}}}
+	##}}}
 
 ## save_data ##{{{ 
 
@@ -247,7 +169,7 @@ def save_data( zX : XZarr , zZ : XZarr ):
 			o_time_wh = delete_hour_from_time_axis(o_time_wh)
 			idx_o_i_t = time_match( o_time_wh , i_time_wh )
 			o_time    = i_time[idx_o_i_t]
-			d_time    = zZ.dtime
+			d_time    = zZ.time
 			idx_o_d_t = time_match( o_time_wh , d_time )
 			
 			
