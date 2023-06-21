@@ -33,54 +33,159 @@ logger = logging.getLogger(__name__)
 logger.addHandler(logging.NullHandler())
 
 
-## Functions
-############
+## Time functions
+#################
+
+class CalendarInfos:##{{{
+	"""
+	XSBCK.CalendarInfos
+	===================
+	
+	Class used to find what is the calendar, its name and class.
+	
+	"""
+	
+	def __init__( self , time = None , name = None ):##{{{
+		"""
+		XSBCK.__init__
+		==============
+		
+		Initialization, time or name must be set
+		
+		Parameters
+		----------
+		time: array of time or None
+		name: the name of the calendar
+		
+		Returns
+		-------
+		self
+		"""
+		
+		
+		if time is not None:
+			
+			if isinstance(time,xr.DataArray):
+				time = time.values
+			t0 = time[0]
+			
+			if isinstance(t0,(np.datetime64,cftime.DatetimeGregorian,dt.datetime)):
+				self.cls   = cftime.DatetimeGregorian
+				self.name  = "standard"
+				self.names = ["standard","gregorian"]
+				self.chunk = 4 * 365 + 1
+			elif isinstance(t0,cftime.DatetimeProlepticGregorian):
+				self.cls   = cftime.DatetimeProlepticGregorian
+				self.name  = "proleptic_gregorian"
+				self.names = [self.name]
+				self.chunk = 4 * 365 + 1
+			elif isinstance(t0,cftime.DatetimeNoLeap):
+				self.cls   = cftime.DatetimeNoLeap
+				self.name  = "365_day"
+				self.names = ["365_day","noleap"]
+				self.chunk = 365
+			elif isinstance(t0,cftime.DatetimeAllLeap):
+				self.cls   = cftime.DatetimeAllLeap
+				self.name  = "366_day"
+				self.names = ["366_day","allleap"]
+				self.chunk = 366
+			elif isinstance(t0,cftime.Datetime360Day):
+				self.cls   = cftime.Datetime360Day
+				self.name  = "360_day"
+				self.names = [self.name]
+				self.chunk = 360
+			else:
+				raise Exception(f"Unknow calendar: t0 = {t0}, type(t0) = {type(t0)}")
+		
+		elif name is not None:
+			
+			if name in ["standard","gregorian"]:
+				self.cls   = cftime.DatetimeGregorian
+				self.name  = "standard"
+				self.names = ["standard","gregorian"]
+				self.chunk = 4 * 365 + 1
+			elif name in ["proleptic_gregorian"]:
+				self.cls   = cftime.DatetimeProlepticGregorian
+				self.name  = "proleptic_gregorian"
+				self.names = [self.name]
+				self.chunk = 4 * 365 + 1
+			elif name in ["365_day","noleap"]:
+				self.cls   = cftime.DatetimeNoLeap
+				self.name  = "365_day"
+				self.names = ["365_day","noleap"]
+				self.chunk = 365
+			elif name in ["366_day","allleap"]:
+				self.cls   = cftime.DatetimeAllLeap
+				self.name  = "366_day"
+				self.names = ["366_day","allleap"]
+				self.chunk = 366
+			elif name in ["360_day"]:
+				self.cls   = cftime.Datetime360Day
+				self.name  = "360_day"
+				self.names = [self.name]
+				self.chunk = 360
+			else:
+				raise Exception(f"Unknow calendar: {name}")
+				
+			
+		else:
+			raise Exception( "XSBCK.CalendarInfos: unknow calendar" )
+	##}}}
+	
+##}}}
 
 def delete_hour_from_time_axis( time ):##{{{
+	"""
+	XSBCK.delete_hour_from_time_axis
+	================================
 	
+	Function which delete hours from the time axis
+	
+	"""
+	calendar = CalendarInfos( time = time )
 	if isinstance(time,xr.DataArray):
 		time = time.values
-	t0 = time[0]
 	
-	if isinstance(t0,np.datetime64):
-		cls = dt.datetime
-	elif isinstance(t0,cftime.DatetimeGregorian):
-		cls = cftime.DatetimeGregorian
-	elif isinstance(t0,cftime.DatetimeProlepticGregorian):
-		cls = cftime.DatetimeProlepticGregorian
-	elif isinstance(t0,cftime.DatetimeNoLeap):
-		cls = cftime.DatetimeNoLeap
-	elif isinstance(t0,cftime.Datetime360Day):
-		cls = cftime.Datetime360Day
-	elif isinstance(t0,dt.datetime):
-		cls = dt.datetime
-	else:
-		raise Exception(f"Unknow calendar: t0 = {t0}, type(t0) = {type(t0)}")
 	
-#	t0 = str(t0)
-#	year,month,day = [int(s) for s in t0[:10].split("-")]
-#	t0   = cls( year , month , day )
-#	dtime = [ t0 + dt.timedelta(days = i) for i in range(len(time))]
-	dtime = [ cls(*tuple([int(s) for s in str(t)[:10].split("-")])) for t in time ]
+	dtime = [ calendar.cls(*tuple([int(s) for s in str(t)[:10].split("-")])) for t in time ]
 	
 	return dtime
 ##}}}
 
 def time_match( sub , ens ):##{{{
+	"""
+	XSBCK.time_match
+	================
 	
-	sub_wh = delete_hour_from_time_axis(sub)
-	ens_wh = delete_hour_from_time_axis(ens)
+	Return index of sub into ens for an array of time
 	
-	units    = "days since " + str(ens_wh[0])[:10]
+	"""
 	
-	num_sub_wh = cftime.date2num( sub_wh , units )
-	num_ens_wh = cftime.date2num( ens_wh , units )
+	##
+	sub = np.asarray(sub)
+	ens = np.asarray(ens)
 	
-	t0,t1 = num_ens_wh[:2]
-	idx   = np.array( np.ceil( (num_sub_wh - t0) / (t1 - t0) ) , int ).tolist()
+	## Find units and calendar
+	calendar = CalendarInfos( time = ens )
+	units    = f"days since {str(ens[0])[:10]}"
+	
+	## Transform time in integer
+	isub = cftime.date2num( sub , units , calendar.name )
+	iens = cftime.date2num( ens , units , calendar.name )
+	
+	## And find indexes
+	if np.unique(np.diff(iens)).size == 1:
+		t0,t1  = iens[:2]
+		idx    = np.array( np.ceil( (isub - t0) / (t1 - t0) ) , int ).tolist()
+	else:
+		idx = np.nonzero( ((iens.reshape(-1,1) - isub.reshape(1,-1)) == 0 ).any(axis=1) )[0].tolist()
 	
 	return idx
 ##}}}
+
+
+## References
+#############
 
 ## build_reference ##{{{
 def build_reference( method : str ):
@@ -109,8 +214,9 @@ def build_reference( method : str ):
 	return ref
 ##}}}
 
-## Classes
-##########
+
+## system
+#########
 
 class SizeOf:##{{{
 	"""
