@@ -168,7 +168,6 @@ def sbck_ns_ufunc( Y0 , X0 , X1f , X1p , cls , **kwargs ):##{{{
 		sbck_cls = cls(**kwargs)
 		sbck_cls.fit( Y0 = Y0 , X0 = X0 , X1 = X1f )
 		Z1p = sbck_cls.predict( X1 = X1p )
-		
 		if X1p.ndim == 1:
 			Z1p = Z1p[:,0]
 	except Exception as e:
