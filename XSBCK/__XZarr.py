@@ -134,7 +134,7 @@ class XZarr:
 		time  = list(set(time))
 		time.sort()
 		dtime = delete_hour_from_time_axis(time)
-		dtime = list(set(time))
+		dtime = list(set(dtime))
 		dtime.sort()
 		time  = xr.DataArray( dtime , dims = ["time"] , coords = [dtime] )
 		time_chunk = calendar.chunk
