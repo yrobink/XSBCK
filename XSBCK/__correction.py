@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022, 2023 Yoann Robin
+## Copyright(c) 2022 / 2024 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 

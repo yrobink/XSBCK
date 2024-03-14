@@ -1,5 +1,5 @@
 
-## Copyright(c) 2022, 2023 Yoann Robin
+## Copyright(c) 2022 / 2024 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -19,7 +19,7 @@
 
 version_major = "1"
 version_minor = "1"
-version_patch = "1"
+version_patch = "2"
 version_extra = ""
 version       = f"{version_major}.{version_minor}.{version_patch}{version_extra}"
 
@@ -39,7 +39,7 @@ src_url = "https://github.com/yrobink/XSBCK"
 
 license = "GNU-GPL3"
 license_txt = """\
-Copyright(c) 2022, 2023 Yoann Robin
+Copyright(c) 2022 / 2024 Yoann Robin
 
 This file is part of XSBCK.
 

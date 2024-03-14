@@ -1,6 +1,6 @@
 
 
-## Copyright(c) 2022, 2023 Yoann Robin
+## Copyright(c) 2022 / 2024 Yoann Robin
 ## 
 ## This file is part of XSBCK.
 ## 
@@ -98,6 +98,10 @@ def load_data():
 	zZ = zX.copy( fzarr = os.path.join( xsbckParams.tmp , "Z.zarr" ) )
 	logger.info( f"   => shape : {zZ.shape}" )
 	logger.info( f"   => zchunk: {zZ.zarr_chunks}" )
+	
+	## Check dtype
+	if not zY.dtype == zX.dtype:
+		raise Exception( f"Biased data and reference must have the same data type (X.dtype = {zX.dtype} != {zY.dtype} = Y.dtype)" )
 	
 	## Rename all variables
 	zX.coords[-1] = xsbckParams.cvarsZ
