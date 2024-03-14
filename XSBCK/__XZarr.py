@@ -34,6 +34,7 @@ import xarray as xr
 from .__utils import delete_hour_from_time_axis
 from .__utils import CalendarInfos
 from .__utils import time_match
+from .__utils import SizeOf
 
 ## Init logging
 logger = logging.getLogger(__name__)
